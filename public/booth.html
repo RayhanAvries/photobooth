@@ -4,240 +4,169 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Capture | Kidversa Studio</title>
-  <link rel="icon" href="icon.png" type="image/png">
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
-    :root {
-      --purple: #5c2e8a;
-      --purple-dark: #4a2372;
-      --orange: #f09822;
-      --orange-dark: #d17c15;
-      --white: #ffffff;
-      --gray-50: #fafafa;
-      --gray-100: #f5f5f5;
-      --gray-200: #e5e5e5;
-      --gray-400: #9ca3af;
-      --gray-500: #6b7280;
-      --gray-600: #4b5563;
-      --gray-700: #374151;
-      --gray-900: #111827;
-      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.03);
-      --shadow: 0 4px 6px rgba(0, 0, 0, 0.04);
-      --shadow-md: 0 6px 12px rgba(0, 0, 0, 0.05);
-      --shadow-lg: 0 12px 24px rgba(0, 0, 0, 0.06);
-      --shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.08);
-      --radius-sm: 10px;
-      --radius: 16px;
-      --radius-md: 22px;
-      --radius-xl: 32px;
-      --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-    body {
-      font-family: 'Plus Jakarta Sans', sans-serif;
-      background: #f8f9fb;
-      height: 100vh; height: 100dvh;
-      width: 100vw; width: 100dvw;
-      overflow: hidden;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background-image: radial-gradient(circle at 10% 90%, rgba(92,46,138,0.02) 0%, transparent 40%), radial-gradient(circle at 90% 10%, rgba(240,152,34,0.02) 0%, transparent 40%);
-    }
-    .main-container { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
-    .screen { display: none; width: 100%; height: 100%; }
-    .screen.active { display: flex; animation: screenIn 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
-    @keyframes screenIn { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
-    .booth-layout { display: flex; width: 100%; height: 100%; background: var(--white); position: relative; }
-    @media (orientation: portrait) { .booth-layout { flex-direction: column; } }
-    
-    .back-home-btn {
-      position: absolute;
-      top: 16px;
-      left: 16px;
-      z-index: 50;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 16px;
-      background: rgba(0,0,0,0.55);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      border: 1px solid rgba(255,255,255,0.15);
-      border-radius: 50px;
-      color: white;
-      text-decoration: none;
-      font-family: 'Plus Jakarta Sans', sans-serif;
-      font-weight: 600;
-      font-size: 0.85rem;
-      transition: all var(--transition);
-      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-      cursor: pointer;
-    }
-    .back-home-btn:hover {
-      background: rgba(92,46,138,0.75);
-      transform: translateY(-2px);
-      box-shadow: 0 8px 30px rgba(92,46,138,0.3);
-    }
-    .back-home-btn:active { transform: scale(0.95); }
-    .back-home-btn i { font-size: 1rem; }
-    @media (max-width: 480px) {
-      .back-home-btn { top: 12px; left: 12px; padding: 8px 14px; font-size: 0.75rem; gap: 6px; }
-      .back-home-btn i { font-size: 0.85rem; }
-    }
-
-    .camera-area { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f0f0f0; min-width: 0; min-height: 0; padding: 12px; gap: 10px; position: relative; }
-    .camera-stage { position: relative; background: #000; border-radius: var(--radius-md); overflow: hidden; box-shadow: 0 0 0 4px var(--white), 0 0 0 8px rgba(92,46,138,0.1), 0 16px 40px rgba(0,0,0,0.1); width: 75%; max-width: 260px; aspect-ratio: 7.2 / 15; }
-    @media (orientation: landscape) { .camera-stage { width: auto; max-width: none; height: 70vh; max-height: 500px; aspect-ratio: 7.2 / 15; } }
-    video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); opacity: 0; pointer-events: none; }
-    #liveCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; }
-    #frameOverlay { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
-    #frameOverlay img { width: 100%; height: 100%; object-fit: fill; }
-    .countdown-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 10; }
-    .countdown-number { font-size: clamp(5rem, 12vw, 8rem); font-weight: 800; color: white; text-shadow: 0 0 60px rgba(240,152,34,0.9), 0 0 120px rgba(240,152,34,0.5); animation: countBounce 0.9s ease; }
-    @keyframes countBounce { 0% { transform: scale(0.2); opacity: 0; } 60% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
-    .capture-btn-inline { display: none; width: 80%; max-width: 340px; min-width: 180px; padding: 16px 28px; font-size: 1.2rem; font-weight: 700; font-family: 'Plus Jakarta Sans', sans-serif; color: white; background: linear-gradient(135deg, var(--orange), var(--orange-dark)); border: none; border-radius: 50px; cursor: pointer; transition: all var(--transition); letter-spacing: 0.5px; box-shadow: 0 10px 28px rgba(240,152,34,0.4); z-index: 1; }
-    .capture-btn-inline:hover { transform: translateY(-3px); box-shadow: 0 16px 40px rgba(240,152,34,0.5); }
-    .capture-btn-inline:active { transform: scale(0.96); }
-    .capture-btn-inline:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
-    @media (orientation: portrait) { .capture-btn-inline { display: block; } }
-    .sidebar { display: flex; background: var(--white); border-left: 1px solid var(--gray-200); flex-shrink: 0; }
-    @media (orientation: portrait) { .sidebar { flex-direction: column; width: 100%; height: auto; border-left: none; border-top: 1px solid var(--gray-200); padding: 10px 14px; align-items: center; gap: 10px; } }
-    @media (orientation: landscape) { .sidebar { flex-direction: column; width: 230px; height: 100%; padding: 28px 18px; justify-content: center; gap: 24px; } }
-    .sidebar-section { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; }
-    .sidebar-label { font-size: 0.7rem; font-weight: 700; color: var(--gray-500); text-transform: uppercase; letter-spacing: 2px; }
-    .frame-list-wrapper { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; display: flex; justify-content: center; }
-    .frame-list-wrapper::-webkit-scrollbar { display: none; }
-    .frame-list { display: flex; gap: 10px; padding: 4px 2px; }
-    @media (orientation: landscape) { .frame-list { flex-wrap: wrap; justify-content: center; } }
-    .frame-item { flex-shrink: 0; width: 48px; height: 100px; border-radius: var(--radius-sm); cursor: pointer; transition: all var(--transition); background: var(--gray-100); overflow: hidden; border: 2px solid transparent; }
-    .frame-item:hover { border-color: var(--gray-300); transform: translateY(-3px); box-shadow: var(--shadow-md); }
-    .frame-item.active { border-color: var(--orange); box-shadow: 0 0 0 4px rgba(240,152,34,0.2); transform: translateY(-3px); }
-    .frame-item img { width: 100%; height: 100%; object-fit: cover; }
-    .frame-item.none { display: flex; align-items: center; justify-content: center; background: var(--gray-200); color: var(--gray-500); font-size: 0.6rem; font-weight: 700; text-align: center; line-height: 1.2; }
-    .filter-list { display: flex; gap: 10px; }
-    @media (orientation: landscape) { .filter-list { flex-direction: column; gap: 10px; } }
-    .filter-btn { padding: 11px 18px; border-radius: 50px; border: 2px solid var(--gray-200); background: var(--white); cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; font-size: 0.8rem; color: var(--gray-600); transition: all var(--transition); text-align: center; white-space: nowrap; letter-spacing: 0.3px; }
-    .filter-btn:hover { border-color: var(--purple); background: var(--gray-50); color: var(--purple); }
-    .filter-btn.active { background: var(--purple); color: white; border-color: var(--purple); box-shadow: 0 4px 14px rgba(92,46,138,0.3); }
-    .capture-btn-sidebar { padding: 14px 18px; font-size: 0.95rem; font-weight: 700; font-family: 'Plus Jakarta Sans', sans-serif; color: white; background: linear-gradient(135deg, var(--orange), var(--orange-dark)); border: none; border-radius: 50px; cursor: pointer; transition: all var(--transition); letter-spacing: 0.5px; box-shadow: 0 8px 24px rgba(240,152,34,0.35); width: 100%; }
-    .capture-btn-sidebar:hover { transform: translateY(-2px); box-shadow: 0 14px 36px rgba(240,152,34,0.5); }
-    .capture-btn-sidebar:active { transform: scale(0.97); }
-    .capture-btn-sidebar:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
-    @media (orientation: portrait) { .capture-btn-sidebar { display: none; } }
-    .preview-layout { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; width: 100%; height: 100%; background: var(--white); padding: 28px 20px; }
-    .preview-canvas-wrap { height: 52vh; height: 52dvh; max-height: 440px; aspect-ratio: 7.2 / 15; background: #f0f0f0; border-radius: var(--radius-md); overflow: hidden; box-shadow: 0 0 0 4px var(--white), 0 0 0 8px rgba(92,46,138,0.1), 0 16px 40px rgba(0,0,0,0.1); }
-    canvas { width: 100%; height: 100%; display: block; }
-    .action-btns { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
-    .action-btns button { padding: 16px 36px; font-weight: 600; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 1rem; border-radius: 50px; border: none; cursor: pointer; transition: all var(--transition); letter-spacing: 0.3px; }
-    .retake-btn { background: var(--white); color: var(--purple); border: 2px solid var(--purple) !important; }
-    .retake-btn:hover { background: var(--purple); color: white; }
-    .finish-btn { background: var(--purple); color: white; box-shadow: 0 8px 24px rgba(92,46,138,0.3); }
-    .finish-btn:hover { transform: translateY(-2px); box-shadow: 0 14px 36px rgba(92,46,138,0.4); }
-    .result-layout { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; background: var(--white); padding: 24px; }
-    .result-card { display: flex; gap: 28px; align-items: center; justify-content: center; max-width: 750px; width: 100%; }
-    @media (orientation: portrait) { .result-card { flex-direction: row; gap: 18px; align-items: center; } }
-    .result-photo-col { flex-shrink: 0; height: 55vh; height: 55dvh; max-height: 500px; aspect-ratio: 7.2 / 15; background: #f0f0f0; border-radius: var(--radius-md); overflow: hidden; box-shadow: 0 0 0 4px var(--white), 0 0 0 8px rgba(92,46,138,0.1), 0 16px 40px rgba(0,0,0,0.1); }
-    .result-info-col { flex: 1; min-width: 140px; max-width: 260px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; }
-    .result-title-row { display: flex; align-items: center; gap: 8px; }
-    .result-logo { width: 28px; height: 28px; border-radius: 50%; object-fit: contain; background: var(--white); box-shadow: var(--shadow-sm); }
-    .result-info-col h3 { font-size: 1.2rem; font-weight: 700; color: var(--gray-900); white-space: nowrap; }
-    .qr-section { background: var(--gray-50); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; align-items: center; gap: 6px; border: 1px solid var(--gray-100); width: 100%; }
-    #qrcode { display: inline-block; padding: 8px; background: white; border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); }
-    #qrcode img, #qrcode canvas { width: 130px !important; height: 130px !important; }
-    .qr-url { font-size: 0.62rem; color: var(--gray-400); word-break: break-all; max-width: 100%; }
-    .brightness-section { display: flex; flex-direction: column; gap: 5px; width: 100%; }
-    .brightness-label { display: flex; justify-content: space-between; align-items: center; font-weight: 600; color: var(--gray-700); font-size: 0.8rem; }
-    .brightness-slider { width: 100%; -webkit-appearance: none; height: 6px; border-radius: 10px; background: linear-gradient(90deg, #d1d5db, var(--orange)); outline: none; }
-    .brightness-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: white; cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.2); border: 3px solid var(--orange); }
-    .result-btns { display: flex; gap: 8px; flex-wrap: wrap; width: 100%; justify-content: center; }
-    .result-btns button, .result-btns a { flex: 1; min-width: 70px; padding: 12px 10px; font-weight: 600; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.8rem; border-radius: 50px; border: none; cursor: pointer; text-decoration: none; text-align: center; transition: all var(--transition); letter-spacing: 0.2px; white-space: nowrap; }
-    .btn-print { background: var(--orange); color: white; box-shadow: 0 6px 20px rgba(240,152,34,0.3); }
-    .btn-print:hover { background: var(--orange-dark); box-shadow: 0 10px 30px rgba(240,152,34,0.4); }
-    .btn-print:disabled { opacity: 0.6; cursor: not-allowed; transform: none !important; }
-    .btn-booth { background: var(--purple); color: white; }
-    .btn-booth:hover { background: var(--purple-dark); }
-    .btn-home { background: var(--white); color: var(--gray-700); border: 2px solid var(--gray-200); }
-    .btn-home:hover { background: var(--gray-50); border-color: var(--gray-300); }
-
-    .hand-status { position: absolute; bottom: -44px; left: 50%; transform: translateX(-50%); text-align: center; font-size: 0.75rem; font-weight: 600; color: var(--gray-600); background: rgba(255,255,255,0.95); padding: 6px 16px; border-radius: 30px; width: auto; max-width: 94%; pointer-events: none; z-index: 20; transition: all 0.3s ease; box-shadow: 0 2px 16px rgba(0,0,0,0.10); border: 2px solid transparent; backdrop-filter: blur(4px); display: flex; align-items: center; gap: 8px; line-height: 1.4; white-space: nowrap; }
-    .hand-status .icon { font-size: 1.1rem; }
-    .hand-status .finger-badge { display: inline-flex; align-items: center; justify-content: center; background: var(--gray-200); color: var(--gray-700); font-size: 0.7rem; font-weight: 700; min-width: 24px; height: 24px; padding: 0 8px; border-radius: 20px; line-height: 1; margin-left: 2px; transition: all 0.3s; flex-shrink: 0; }
-    .hand-status .status-text { flex: 1; text-align: center; }
-    .hand-status.detected { color: #0d6e2b; background: rgba(46,204,113,0.18); border-color: #2ecc71; box-shadow: 0 2px 24px rgba(46,204,113,0.30); }
-    .hand-status.detected .finger-badge { background: #2ecc71; color: white; }
-    .hand-status.waiting { color: var(--orange); background: rgba(240,152,34,0.12); border-color: var(--orange); }
-    .hand-status.waiting .finger-badge { background: var(--orange); color: white; }
-    .hand-status.error { color: #b03a2e; background: rgba(231,76,60,0.10); border-color: #e74c3c; }
-    .hand-status .pulse-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #2ecc71; margin-right: 2px; animation: pulseDot 0.7s ease-in-out infinite; flex-shrink: 0; }
-    @keyframes pulseDot { 0%,100% { opacity: 0.3; transform: scale(0.7); } 50% { opacity: 1; transform: scale(1.2); } }
-    .hand-status .cooldown-spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(240,152,34,0.2); border-top-color: var(--orange); border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    @media (max-width: 480px) { .hand-status { font-size: 0.6rem; padding: 4px 10px; bottom: -36px; white-space: normal; max-width: 96%; flex-wrap: wrap; justify-content: center; gap: 4px; } .hand-status .finger-badge { font-size: 0.6rem; min-width: 20px; height: 20px; padding: 0 6px; } }
-    .cooldown-bar { position: absolute; bottom: -4px; left: 0; height: 4px; background: linear-gradient(90deg, var(--orange), var(--orange-dark)); border-radius: 0 0 4px 4px; transition: width 0.1s linear; width: 0%; z-index: 15; opacity: 0; }
-    .cooldown-bar.active { opacity: 1; }
-    .init-status { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 1rem; font-weight: 600; z-index: 25; background: rgba(0,0,0,0.6); padding: 12px 24px; border-radius: 12px; backdrop-filter: blur(4px); text-align: center; display: none; pointer-events: none; }
-    .init-status .spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid rgba(255,255,255,0.2); border-top-color: var(--orange); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 10px; vertical-align: middle; }
-    .init-status.show { display: block; }
-
-    .toast-container { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 9999; pointer-events: none; }
-    .toast { background: #1f2937; color: #fff; padding: 14px 28px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); font-weight: 600; font-size: 0.95rem; display: flex; align-items: center; gap: 10px; opacity: 0; transform: translateY(20px) scale(0.95); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); pointer-events: auto; max-width: 90%; backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.05); }
-    .toast.show { opacity: 1; transform: translateY(0) scale(1); }
-    .toast.success { background: #065f46; border-color: #34d399; }
-    .toast.error { background: #7f1d1d; border-color: #f87171; }
-    .toast .icon { font-size: 1.4rem; }
+    *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    :root{--purple:#5c2e8a;--purple-dark:#4a2372;--purple-light:#8b5fc0;--orange:#f09822;--orange-dark:#d17c15;--white:#fff;--gray-50:#f8f9fb;--gray-100:#f1f3f5;--gray-200:#e5e7eb;--gray-300:#d1d5db;--gray-400:#9ca3af;--gray-500:#6b7280;--gray-600:#4b5563;--gray-700:#374151;--gray-900:#111827;--radius:16px;--radius-lg:24px;--shadow:0 4px 16px rgba(0,0,0,.06);--shadow-lg:0 8px 32px rgba(0,0,0,.08);--transition:.3s cubic-bezier(.4,0,.2,1)}
+    body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--gray-50);height:100vh;height:100dvh;width:100vw;width:100dvw;overflow:hidden;display:flex;align-items:center;justify-content:center}
+    .main-container{width:100%;height:100%;display:flex;align-items:center;justify-content:center;position:relative}
+    .screen{display:none;width:100%;height:100%;animation:screenIn .5s cubic-bezier(.4,0,.2,1)}
+    .screen.active{display:flex}
+    @keyframes screenIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+    .booth-layout{display:flex;width:100%;height:100%;background:var(--white);position:relative;overflow:hidden}
+    @media(orientation:portrait){.booth-layout{flex-direction:column}}
+    @media(orientation:landscape){.booth-layout{flex-direction:row}}
+    .back-home-btn{position:absolute;top:16px;left:16px;z-index:50;display:flex;align-items:center;gap:8px;padding:12px 20px;background:rgba(0,0,0,.6);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.15);border-radius:50px;color:#fff;text-decoration:none;font-weight:700;font-size:.95rem;transition:all var(--transition);box-shadow:0 4px 20px rgba(0,0,0,.15);cursor:pointer}
+    .back-home-btn:hover{background:var(--purple);transform:translateY(-2px);box-shadow:0 8px 30px rgba(92,46,138,.3)}
+    .back-home-btn:active{transform:scale(.95)}
+    @media(max-width:480px){.back-home-btn{top:12px;left:12px;padding:10px 16px;font-size:.85rem;gap:8px}}
+    .camera-area{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(180deg,#e8ecf0 0%,#d5d9de 100%);min-width:0;min-height:0;padding:12px;gap:12px;position:relative}
+    .camera-stage{position:relative;background:#000;border-radius:var(--radius-lg);overflow:hidden;box-shadow:0 0 0 4px var(--white),0 0 0 8px rgba(92,46,138,.08),0 20px 60px rgba(0,0,0,.15);width:78%;max-width:360px;aspect-ratio:7.2/15;transition:all var(--transition)}
+    @media(orientation:landscape){.camera-stage{width:auto;max-width:none;height:70vh;max-height:550px;aspect-ratio:7.2/15}}
+    @media(max-width:480px){.camera-stage{width:85%;max-width:320px}}
+    video{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);opacity:0;pointer-events:none}
+    #liveCanvas{position:absolute;top:0;left:0;width:100%;height:100%;z-index:2}
+    #frameOverlay{position:absolute;inset:0;pointer-events:none;z-index:6}
+    #frameOverlay img{width:100%;height:100%;object-fit:fill}
+    .countdown-overlay{position:absolute;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:10;border-radius:var(--radius-lg)}
+    .countdown-number{font-size:clamp(6rem,15vw,10rem);font-weight:900;color:#fff;text-shadow:0 0 60px rgba(240,152,34,.9),0 0 120px rgba(240,152,34,.5);animation:countBounce .9s cubic-bezier(.4,0,.2,1)}
+    @keyframes countBounce{0%{transform:scale(.2) rotate(-10deg);opacity:0}50%{transform:scale(1.2) rotate(2deg);opacity:1}100%{transform:scale(1) rotate(0);opacity:1}}
+    .capture-btn-inline{display:none;width:80%;max-width:380px;min-width:200px;padding:18px 32px;font-size:1.15rem;font-weight:800;font-family:'Plus Jakarta Sans',sans-serif;color:#fff;background:linear-gradient(135deg,var(--orange),var(--orange-dark));border:none;border-radius:50px;cursor:pointer;transition:all var(--transition);letter-spacing:.5px;box-shadow:0 8px 28px rgba(240,152,34,.4);z-index:1;position:relative;overflow:hidden}
+    .capture-btn-inline::before{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.2),transparent);transition:left .5s ease}
+    .capture-btn-inline:hover::before{left:100%}
+    .capture-btn-inline:hover{transform:translateY(-3px);box-shadow:0 16px 44px rgba(240,152,34,.5)}
+    .capture-btn-inline:active{transform:scale(.96)}
+    .capture-btn-inline:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+    .capture-btn-inline i{margin-right:10px}
+    @media(orientation:portrait){.capture-btn-inline{display:block}}
+    .sidebar{display:flex;background:var(--white);border-left:1px solid var(--gray-200);flex-shrink:0;padding:20px 18px;gap:16px;flex-direction:row}
+    @media(orientation:portrait){.sidebar{flex-direction:column;width:100%;height:auto;border-left:none;border-top:1px solid var(--gray-200);padding:14px 16px;align-items:stretch;gap:12px;overflow-y:auto;max-height:38vh}}
+    @media(orientation:landscape){.sidebar{flex-direction:column;width:230px;height:100%;padding:24px 18px;justify-content:center;gap:20px}}
+    .sidebar-section{display:flex;flex-direction:column;align-items:center;gap:8px;width:100%;flex-shrink:0}
+    @media(orientation:portrait){.sidebar-section{align-items:stretch;gap:6px}}
+    .sidebar-label{font-size:.7rem;font-weight:800;color:var(--gray-400);text-transform:uppercase;letter-spacing:2.5px;white-space:nowrap;text-align:center}
+    .frame-list-wrapper{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;display:flex;justify-content:center;padding:4px 0}
+    .frame-list-wrapper::-webkit-scrollbar{display:none}
+    .frame-list{display:flex;gap:14px;padding:4px 2px;flex-wrap:nowrap;justify-content:center}
+    @media(orientation:landscape){.frame-list{flex-wrap:wrap;justify-content:center}}
+    .frame-item{flex-shrink:0;width:64px;height:134px;border-radius:var(--radius-sm);cursor:pointer;transition:all var(--transition);background:var(--gray-100);overflow:hidden;border:3px solid transparent;position:relative;display:flex;flex-direction:column;align-items:center}
+    .frame-item:hover{transform:translateY(-4px) scale(1.04);box-shadow:var(--shadow)}
+    .frame-item.active{border-color:var(--orange);box-shadow:0 0 0 4px rgba(240,152,34,.25),var(--shadow);transform:translateY(-4px)}
+    .frame-item img{width:100%;height:100%;object-fit:cover}
+    .frame-item .frame-name{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.75);color:#fff;font-size:.55rem;font-weight:700;padding:3px 4px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;letter-spacing:.3px}
+    .frame-item.none{display:flex;align-items:center;justify-content:center;background:var(--gray-200);color:var(--gray-500);font-size:.65rem;font-weight:700;text-align:center;line-height:1.2;padding:4px;min-height:134px}
+    .frame-item.none.active{border-color:var(--gray-400);box-shadow:0 0 0 4px rgba(156,163,175,.2)}
+    .frame-item.none .frame-name{display:none}
+    .filter-list{display:flex;gap:8px;width:100%}
+    @media(orientation:landscape){.filter-list{flex-direction:column;gap:8px;width:100%}}
+    @media(orientation:portrait){.filter-list{justify-content:center}}
+    .filter-btn{padding:12px 20px;border-radius:50px;border:2px solid var(--gray-200);background:var(--white);cursor:pointer;font-weight:700;font-size:.85rem;color:var(--gray-600);transition:all var(--transition);text-align:center;white-space:nowrap;letter-spacing:.3px;flex:1;min-height:48px}
+    .filter-btn:hover{border-color:var(--purple);background:var(--gray-50);color:var(--purple);transform:translateY(-2px);box-shadow:var(--shadow-sm)}
+    .filter-btn.active{background:var(--purple);color:#fff;border-color:var(--purple);box-shadow:0 4px 14px rgba(92,46,138,.3)}
+    .capture-btn-sidebar{padding:16px 24px;font-size:1rem;font-weight:800;font-family:'Plus Jakarta Sans',sans-serif;color:#fff;background:linear-gradient(135deg,var(--orange),var(--orange-dark));border:none;border-radius:50px;cursor:pointer;transition:all var(--transition);letter-spacing:.5px;box-shadow:0 8px 28px rgba(240,152,34,.35);width:100%;position:relative;overflow:hidden;min-height:56px}
+    .capture-btn-sidebar::before{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.2),transparent);transition:left .5s ease}
+    .capture-btn-sidebar:hover::before{left:100%}
+    .capture-btn-sidebar:hover{transform:translateY(-2px);box-shadow:0 14px 36px rgba(240,152,34,.5)}
+    .capture-btn-sidebar:active{transform:scale(.97)}
+    .capture-btn-sidebar:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+    .capture-btn-sidebar i{margin-right:10px}
+    @media(orientation:portrait){.capture-btn-sidebar{display:none}}
+    .cooldown-bar{position:absolute;bottom:-4px;left:0;height:4px;background:linear-gradient(90deg,var(--orange),var(--orange-dark));border-radius:0 0 4px 4px;transition:width .1s linear;width:0%;z-index:15;opacity:0}
+    .cooldown-bar.active{opacity:1}
+    .preview-layout{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:32px;width:100%;height:100%;background:linear-gradient(180deg,var(--white) 0%,var(--gray-50) 100%);padding:28px 20px}
+    .preview-canvas-wrap{height:60vh;height:60dvh;max-height:520px;aspect-ratio:7.2/15;background:var(--gray-100);border-radius:var(--radius-lg);overflow:hidden;box-shadow:0 0 0 4px var(--white),0 0 0 8px rgba(92,46,138,.06),0 20px 60px rgba(0,0,0,.1)}
+    .preview-canvas-wrap canvas{width:100%;height:100%;display:block}
+    .action-btns{display:flex;gap:20px;flex-wrap:wrap;justify-content:center}
+    .action-btns button{padding:18px 48px;font-weight:800;font-family:'Plus Jakarta Sans',sans-serif;font-size:1.1rem;border-radius:50px;border:none;cursor:pointer;transition:all var(--transition);letter-spacing:.3px;min-width:160px}
+    .retake-btn{background:var(--white);color:var(--purple);border:2px solid var(--purple)!important}
+    .retake-btn:hover{background:var(--purple);color:#fff;transform:translateY(-2px);box-shadow:0 8px 24px rgba(92,46,138,.25)}
+    .finish-btn{background:var(--purple);color:#fff;box-shadow:0 8px 24px rgba(92,46,138,.3)}
+    .finish-btn:hover{transform:translateY(-2px);box-shadow:0 14px 36px rgba(92,46,138,.4)}
+    .action-btns button:active{transform:scale(.96)}
+    @media(max-width:480px){.action-btns button{padding:16px 32px;font-size:1rem;min-width:120px}}
+    .result-layout{display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:linear-gradient(180deg,var(--white) 0%,var(--gray-50) 100%);padding:20px}
+    .result-card{display:flex;gap:32px;align-items:center;justify-content:center;max-width:900px;width:100%}
+    @media(orientation:portrait){.result-card{flex-direction:column;gap:20px;align-items:center}}
+    @media(orientation:landscape){.result-card{flex-direction:row;gap:32px;align-items:center}}
+    .result-photo-col{flex-shrink:0;height:62vh;height:62dvh;max-height:540px;aspect-ratio:7.2/15;background:var(--gray-100);border-radius:var(--radius-lg);overflow:hidden;box-shadow:0 0 0 4px var(--white),0 0 0 8px rgba(92,46,138,.06),0 20px 60px rgba(0,0,0,.1)}
+    .result-photo-col canvas{width:100%;height:100%;display:block}
+    .result-info-col{flex:1;min-width:200px;max-width:320px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:16px}
+    @media(orientation:portrait){.result-info-col{max-width:100%;width:100%;padding:0 20px}}
+    .result-title-row{display:flex;align-items:center;gap:12px}
+    .result-logo{width:36px;height:36px;border-radius:50%;object-fit:contain;background:var(--white);box-shadow:var(--shadow-sm)}
+    .result-info-col h3{font-size:1.4rem;font-weight:800;color:var(--gray-900);white-space:nowrap}
+    @media(max-width:480px){.result-info-col h3{font-size:1.2rem}}
+    .qr-section{background:var(--gray-50);border-radius:var(--radius);padding:16px;display:flex;flex-direction:column;align-items:center;gap:8px;border:1px solid var(--gray-200);width:100%;transition:all var(--transition)}
+    .qr-section:hover{border-color:var(--purple-light);box-shadow:var(--shadow)}
+    #qrcode{display:inline-block;padding:10px;background:#fff;border-radius:var(--radius-sm);box-shadow:var(--shadow-sm)}
+    #qrcode img,#qrcode canvas{width:150px!important;height:150px!important}
+    @media(max-width:480px){#qrcode img,#qrcode canvas{width:130px!important;height:130px!important}}
+    .qr-url{font-size:.6rem;color:var(--gray-400);word-break:break-all;max-width:100%;font-weight:500}
+    .brightness-section{display:flex;flex-direction:column;gap:8px;width:100%}
+    .brightness-label{display:flex;justify-content:space-between;align-items:center;font-weight:700;color:var(--gray-700);font-size:.85rem}
+    .brightness-slider{width:100%;-webkit-appearance:none;height:8px;border-radius:10px;background:linear-gradient(90deg,#d1d5db,var(--orange));outline:none;transition:all var(--transition)}
+    .brightness-slider::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;border-radius:50%;background:#fff;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.2);border:3px solid var(--orange);transition:all var(--transition)}
+    .brightness-slider::-webkit-slider-thumb:hover{transform:scale(1.1);box-shadow:0 4px 20px rgba(240,152,34,.4)}
+    .brightness-slider::-moz-range-thumb{width:26px;height:26px;border-radius:50%;background:#fff;cursor:pointer;border:3px solid var(--orange)}
+    .result-btns{display:flex;gap:10px;flex-wrap:wrap;width:100%;justify-content:center}
+    .result-btns button,.result-btns a{flex:1;min-width:90px;padding:14px 18px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;font-size:.85rem;border-radius:50px;border:none;cursor:pointer;text-decoration:none;text-align:center;transition:all var(--transition);letter-spacing:.2px;white-space:nowrap}
+    .btn-print{background:linear-gradient(135deg,var(--orange),var(--orange-dark));color:#fff;box-shadow:0 6px 20px rgba(240,152,34,.3)}
+    .btn-print:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(240,152,34,.4)}
+    .btn-print:disabled{opacity:.6;cursor:not-allowed;transform:none!important}
+    .btn-booth{background:var(--purple);color:#fff;box-shadow:0 6px 20px rgba(92,46,138,.25)}
+    .btn-booth:hover{background:var(--purple-dark);transform:translateY(-2px);box-shadow:0 10px 30px rgba(92,46,138,.35)}
+    .btn-home{background:var(--white);color:var(--gray-700);border:2px solid var(--gray-200)}
+    .btn-home:hover{background:var(--gray-50);border-color:var(--gray-300);transform:translateY(-2px)}
+    .result-btns button:active,.result-btns a:active{transform:scale(.96)}
+    .toast-container{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);z-index:9999;pointer-events:none;width:90%;max-width:500px}
+    .toast{background:var(--gray-900);color:#fff;padding:16px 28px;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.2);font-weight:600;font-size:.95rem;display:flex;align-items:center;gap:14px;opacity:0;transform:translateY(20px) scale(.95);transition:all .3s cubic-bezier(.4,0,.2,1);pointer-events:auto;max-width:90%;backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.05)}
+    .toast.show{opacity:1;transform:translateY(0) scale(1)}
+    .toast.success{background:#065f46;border-color:#34d399}
+    .toast.error{background:#7f1d1d;border-color:#f87171}
+    .toast .icon{font-size:1.5rem;flex-shrink:0}
+    @media(max-height:600px){.camera-stage{width:60%;max-width:240px}.sidebar{padding:10px 12px;gap:8px}.frame-item{width:52px;height:110px}.filter-btn{padding:10px 14px;font-size:.75rem}.capture-btn-inline{padding:14px 24px;font-size:1rem;min-width:160px}.capture-btn-sidebar{padding:12px 18px;font-size:.85rem}}
+    @media(max-width:360px){.camera-stage{width:72%;max-width:220px}.frame-item{width:48px;height:100px}.filter-btn{padding:8px 12px;font-size:.7rem}.sidebar-label{font-size:.6rem;letter-spacing:2px}}
+    ::-webkit-scrollbar{width:4px;height:4px}
+    ::-webkit-scrollbar-track{background:var(--gray-100)}
+    ::-webkit-scrollbar-thumb{background:var(--gray-300);border-radius:10px}
+    ::-webkit-scrollbar-thumb:hover{background:var(--gray-400)}
   </style>
 </head>
 <body>
 <div class="main-container">
-
   <div class="screen active" id="boothScreen">
     <div class="booth-layout">
-      <a href="/" class="back-home-btn" id="backHomeBtn">
-        <i class="fas fa-arrow-left"></i>
-        <span>Home</span>
-      </a>
-
+      <a href="/" class="back-home-btn" id="backHomeBtn"><i class="fas fa-arrow-left"></i><span>Home</span></a>
       <div class="camera-area">
         <div class="camera-stage" id="cameraWrapper">
-          <video id="video" autoplay playsinline></video>
+          <video id="video" autoplay playsinline muted></video>
           <canvas id="liveCanvas"></canvas>
           <div id="frameOverlay"><img id="frameOverlayImg" src="" alt="" style="display:none;"></div>
           <div class="countdown-overlay" id="countdownOverlay"><span class="countdown-number" id="countdownNumber">5</span></div>
-          <div class="hand-status" id="handStatus">
-            <span class="icon">✋</span>
-            <span class="status-text">Memuat deteksi tangan...</span>
-            <span class="finger-badge" id="fingerBadge">0</span>
-          </div>
           <div class="cooldown-bar" id="cooldownBar"></div>
-          <div class="init-status" id="initStatus">
-            <span class="spinner"></span>
-            <span>Memuat model deteksi tangan...</span>
-          </div>
         </div>
-        <button class="capture-btn-inline" id="captureBtnInline" onclick="startCountdown()">Capture</button>
+        <button class="capture-btn-inline" id="captureBtnInline" onclick="startCountdown()"><i class="fas fa-camera"></i> Capture</button>
       </div>
       <div class="sidebar">
         <div class="sidebar-section">
           <div class="sidebar-label" id="framesLabel">Frames</div>
-          <div class="frame-list-wrapper"><div class="frame-list" id="frameList"><div class="frame-item none active" data-frame-id="" onclick="selectFrame(this,'',null)">No</div></div></div>
+          <div class="frame-list-wrapper"><div class="frame-list" id="frameList"><div class="frame-item none active" data-frame-id="" onclick="selectFrame(this,'',null)"><span>No</span></div></div></div>
         </div>
         <div class="sidebar-section">
           <div class="sidebar-label" id="filterLabel">Filter</div>
           <div class="filter-list">
             <button class="filter-btn active" data-filter="none" onclick="setFilter('none',this)">None</button>
-            <button class="filter-btn" data-filter="monochrome" onclick="setFilter('monochrome',this)">Monochrome</button>
+            <button class="filter-btn" data-filter="monochrome" onclick="setFilter('monochrome',this)">Mono</button>
           </div>
         </div>
-        <button class="capture-btn-sidebar" id="captureBtnSidebar" onclick="startCountdown()">Capture</button>
+        <button class="capture-btn-sidebar" id="captureBtnSidebar" onclick="startCountdown()"><i class="fas fa-camera"></i> Capture</button>
       </div>
     </div>
   </div>
-
   <div class="screen" id="previewScreen">
     <div class="preview-layout">
       <div class="preview-canvas-wrap"><canvas id="canvas"></canvas></div>
@@ -247,873 +176,77 @@
       </div>
     </div>
   </div>
-
   <div class="screen" id="resultScreen">
     <div class="result-layout">
       <div class="result-card">
         <div class="result-photo-col"><canvas id="resultCanvas"></canvas></div>
         <div class="result-info-col">
-          <div class="result-title-row">
-            <img src="logo.png" alt="Logo" class="result-logo" onerror="this.style.display='none'">
-            <h3 id="resultTitle">Your Photo is Ready</h3>
-          </div>
+          <div class="result-title-row"><img src="logo.png" alt="Logo" class="result-logo" onerror="this.style.display='none'"><h3 id="resultTitle">Your Photo is Ready</h3></div>
           <div class="qr-section"><div id="qrcode"></div><p class="qr-url" id="qrUrlText"></p></div>
-          <div class="brightness-section">
-            <div class="brightness-label"><span id="brightnessLabel">Brightness</span><span id="finalBrightnessVal">1.0</span></div>
-            <input type="range" class="brightness-slider" id="finalBrightness" min="0.5" max="2.0" step="0.05" value="1.0">
-          </div>
+          <div class="brightness-section"><div class="brightness-label"><span id="brightnessLabel">Brightness</span><span id="finalBrightnessVal">1.0</span></div><input type="range" class="brightness-slider" id="finalBrightness" min="0.5" max="2.0" step="0.05" value="1.0"></div>
           <div class="result-btns">
             <button class="btn-print" id="printBtn" onclick="printPhoto()"><i class="fas fa-print"></i> Print</button>
-            <button class="btn-booth" onclick="backToBooth()">New Photo</button>
-            <a href="/" class="btn-home">Home</a>
+            <button class="btn-booth" onclick="backToBooth()"><i class="fas fa-camera"></i> New</button>
+            <a href="/" class="btn-home"><i class="fas fa-home"></i> Home</a>
           </div>
         </div>
       </div>
     </div>
   </div>
-
 </div>
-
 <div class="toast-container" id="toastContainer"></div>
-
 <script>
-  (function() {
-    function showToast(message, type = 'success') {
-      const container = document.getElementById('toastContainer');
-      const toast = document.createElement('div');
-      toast.className = `toast ${type}`;
-      const icon = type === 'success' ? '✅' : '❌';
-      toast.innerHTML = `<span class="icon">${icon}</span> ${message}`;
-      container.appendChild(toast);
-      requestAnimationFrame(() => toast.classList.add('show'));
-      setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 400); }, 3500);
-    }
-
-    const screens = {
-      booth: document.getElementById('boothScreen'),
-      preview: document.getElementById('previewScreen'),
-      result: document.getElementById('resultScreen')
-    };
-    const video = document.getElementById('video');
-    const liveCanvas = document.getElementById('liveCanvas');
-    const liveCtx = liveCanvas.getContext('2d', { willReadFrequently: true });
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const resultCanvas = document.getElementById('resultCanvas');
-    const resultCtx = resultCanvas.getContext('2d');
-    const countdownOverlay = document.getElementById('countdownOverlay');
-    const countdownNumber = document.getElementById('countdownNumber');
-    const frameOverlayImg = document.getElementById('frameOverlayImg');
-    const frameList = document.getElementById('frameList');
-    const finalBrightness = document.getElementById('finalBrightness');
-    const finalBrightnessVal = document.getElementById('finalBrightnessVal');
-    const qrContainer = document.getElementById('qrcode');
-    const qrUrlText = document.getElementById('qrUrlText');
-    const captureBtnInline = document.getElementById('captureBtnInline');
-    const captureBtnSidebar = document.getElementById('captureBtnSidebar');
-    const cameraWrapper = document.getElementById('cameraWrapper');
-    const handStatus = document.getElementById('handStatus');
-    const fingerBadge = document.getElementById('fingerBadge');
-    const statusText = handStatus.querySelector('.status-text');
-    const cooldownBar = document.getElementById('cooldownBar');
-    const initStatus = document.getElementById('initStatus');
-    const printBtn = document.getElementById('printBtn');
-    const backHomeBtn = document.getElementById('backHomeBtn');
-
-    const framesLabel = document.getElementById('framesLabel');
-    const filterLabel = document.getElementById('filterLabel');
-    const resultTitle = document.getElementById('resultTitle');
-    const brightnessLabel = document.getElementById('brightnessLabel');
-    const filterBtns = document.querySelectorAll('.filter-btn');
-    const retakeBtn = document.querySelector('.retake-btn');
-    const finishBtn = document.querySelector('.finish-btn');
-
-    let currentFrame = null, currentFrameUrl = null, rawImageData = null, capturedImageData = null,
-      savedPhotoId = null, savedPhotoUrl = null, stream = null, countdownTimer = null,
-      currentFilter = 'none', liveAnimationId = null, mirrorCamera = true;
-    let countdownSeconds = 5;
-    const TARGET_RATIO = 7.2 / 15;
-
-    const translations = {
-      en: {
-        frames: 'Frames', filter: 'Filter', none: 'None', monochrome: 'Monochrome',
-        capture: 'Capture', retake: 'Retake', continue: 'Continue',
-        yourPhotoReady: 'Your Photo is Ready', brightness: 'Brightness',
-        print: 'Print', newPhoto: 'New Photo', home: 'Finish',
-        cameraDenied: 'Camera access denied.', cameraNotReady: 'Camera is not ready.',
-        handHint: 'Show 5 fingers for auto capture', handDetected: '5 fingers detected! Auto capture...',
-        handCooldown: 'Please wait...', handError: 'Hand detection error', loading: 'Loading hand detection...',
-        printing: 'Printing...', printSuccess: 'Photo sent to printer!', printFailed: 'Print failed: '
-      },
-      id: {
-        frames: 'Bingkai', filter: 'Filter', none: 'Tanpa', monochrome: 'Monokrom',
-        capture: 'Ambil Foto', retake: 'Ulangi', continue: 'Lanjutkan',
-        yourPhotoReady: 'Foto Anda Siap', brightness: 'Kecerahan',
-        print: 'Cetak', newPhoto: 'Foto Baru', home: 'Selesai',
-        cameraDenied: 'Akses kamera ditolak.', cameraNotReady: 'Kamera belum siap.',
-        handHint: 'Tunjukkan 5 jari untuk capture otomatis', handDetected: '5 jari terdeteksi! Capture otomatis...',
-        handCooldown: 'Tunggu sebentar...', handError: 'Error deteksi tangan', loading: 'Memuat deteksi tangan...',
-        printing: 'Mencetak...', printSuccess: 'Foto terkirim ke printer!', printFailed: 'Gagal mencetak: '
-      }
-    };
-    let currentLang = 'en';
-
-    function t(key) { return translations[currentLang]?.[key] || translations['en'][key] || key; }
-
-    // ===== AUDIO SYSTEM dengan CUT =====
-    let audioElements = {};
-    let audioUnlocked = false;
-    let introPlayed = false;
-    let currentAudio = null; // referensi audio yang sedang diputar
-
-    function unlockAudio() {
-      if (audioUnlocked) return;
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const buffer = ctx.createBuffer(1, 1, 22050);
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-      source.start(0);
-      if (ctx.state === 'suspended') ctx.resume();
-      Object.values(audioElements).forEach(audio => {
-        audio.load();
-        audio.play().then(() => { audio.pause(); audio.currentTime = 0; }).catch(() => {});
-      });
-      audioUnlocked = true;
-    }
-
-    async function getSoundUrl(mappingKey) {
-      try {
-        const [settingsRes, soundsRes] = await Promise.all([
-          fetch('/api/sound-settings'),
-          fetch('/api/sounds')
-        ]);
-        const soundSettings = await settingsRes.json();
-        const sounds = await soundsRes.json();
-        const soundId = soundSettings[mappingKey];
-        if (!soundId) return null;
-        const sound = sounds.find(s => s.id == soundId);
-        if (!sound) return null;
-        return `/sounds/${sound.filename}`;
-      } catch (err) { return null; }
-    }
-
-    function getSoundKey(baseKey) {
-      const suffix = currentLang === 'id' ? '_id' : '';
-      return `sound_${baseKey}_id${suffix}`;
-    }
-
-    async function preloadAudioElement(mappingKey) {
-      const url = await getSoundUrl(mappingKey);
-      if (!url) return;
-      const audio = new Audio(url);
-      audio.volume = 1.0;
-      audio.preload = 'auto';
-      audio.load();
-      audioElements[mappingKey] = audio;
-    }
-
-    // playSound dengan cut otomatis
-    function playSound(mappingKey) {
-      const audio = audioElements[mappingKey];
-      if (!audio) return;
-      
-      // Hentikan suara yang sedang berjalan (cut)
-      if (currentAudio) {
-        currentAudio.pause();
-        currentAudio.currentTime = 0;
-        currentAudio = null;
-      }
-      
-      audio.pause();
-      audio.currentTime = 0;
-      audio.volume = 1.0;
-      
-      const playPromise = audio.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(err => {
-          setTimeout(() => {
-            audio.currentTime = 0;
-            audio.play().catch(() => {});
-          }, 100);
-        });
-      }
-      currentAudio = audio;
-    }
-
-    // stopCaptureSound: hentikan jika suara yang sedang diputar adalah capture
-    function stopCaptureSound() {
-      if (!currentAudio) return;
-      const captureKey = getSoundKey('capture');
-      const captureAudio = audioElements[captureKey];
-      if (currentAudio === captureAudio) {
-        currentAudio.pause();
-        currentAudio.currentTime = 0;
-        currentAudio = null;
-      }
-    }
-
-    async function preloadAllSounds() {
-      const keys = [
-        getSoundKey('capture'),
-        getSoundKey('retake'),
-        getSoundKey('print')
-      ];
-      const uniqueKeys = [...new Set(keys)];
-      for (const key of uniqueKeys) {
-        await preloadAudioElement(key);
-      }
-    }
-
-    function playCountdownBeep() {
-      try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        if (ctx.state === 'suspended') ctx.resume();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.frequency.value = 880;
-        osc.type = 'sine';
-        gain.gain.setValueAtTime(0.4, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.3);
-      } catch(e) {}
-    }
-
-    function playIntroSound() {
-      if (introPlayed) return;
-      if (!handDetectionReady || !video.videoWidth) {
-        setTimeout(playIntroSound, 500);
-        return;
-      }
-      introPlayed = true;
-      unlockAudio();
-      playSound(getSoundKey('capture'));
-    }
-
-    async function loadSettings() {
-      try {
-        const res = await fetch('/api/settings');
-        const settings = await res.json();
-        if (settings.language && translations[settings.language]) currentLang = settings.language;
-        if (settings.countdown_seconds) countdownSeconds = parseInt(settings.countdown_seconds, 10) || 5;
-        mirrorCamera = settings.mirror_camera !== 'false';
-        applyLanguage();
-        updateBackButtonText();
-        await preloadAllSounds();
-      } catch (e) { console.error('Failed to load settings:', e); applyLanguage(); }
-    }
-
-    function updateBackButtonText() {
-      if (backHomeBtn) {
-        const span = backHomeBtn.querySelector('span');
-        if (span) span.textContent = t('home');
-      }
-    }
-
-    function applyLanguage() {
-      framesLabel.textContent = t('frames');
-      filterLabel.textContent = t('filter');
-      if (filterBtns.length >= 2) {
-        filterBtns[0].textContent = t('none');
-        filterBtns[1].textContent = t('monochrome');
-      }
-      captureBtnInline.textContent = t('capture');
-      captureBtnSidebar.textContent = t('capture');
-      if (retakeBtn) retakeBtn.textContent = t('retake');
-      if (finishBtn) finishBtn.textContent = t('continue');
-      if (resultTitle) resultTitle.textContent = t('yourPhotoReady');
-      if (brightnessLabel) brightnessLabel.textContent = t('brightness');
-      if (printBtn) printBtn.innerHTML = `<i class="fas fa-print"></i> ${t('print')}`;
-      const homeBtn = document.querySelector('.btn-home');
-      if (homeBtn) homeBtn.textContent = t('home');
-      const newPhotoBtn = document.querySelector('.btn-booth');
-      if (newPhotoBtn) newPhotoBtn.textContent = t('newPhoto');
-      updateBackButtonText();
-      if (!handDetectionReady) updateHandStatus('loading');
-      else updateHandStatus('idle');
-    }
-
-    function disableCapture() { captureBtnInline.disabled = true; captureBtnSidebar.disabled = true; }
-    function enableCapture() { captureBtnInline.disabled = false; captureBtnSidebar.disabled = false; }
-
-    function showScreen(name) {
-      Object.values(screens).forEach(s => s.classList.remove('active'));
-      screens[name].classList.add('active');
-      if (name === 'booth') {
-        startLivePreview();
-        startHandDetection();
-        // intro diputar otomatis saat siap
-      } else {
-        stopLivePreview();
-        stopHandDetection();
-      }
-      if (name === 'result') applyLanguage();
-    }
-
-    async function initCamera() {
-      try {
-        if (stream) stream.getTracks().forEach(t => t.stop());
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 480 }, height: { ideal: 1000 }, aspectRatio: { ideal: TARGET_RATIO } }
-        });
-        video.srcObject = stream;
-        await video.play();
-        startLivePreview();
-        setTimeout(() => startHandDetection(), 300);
-      } catch (err) { showToast(t('cameraDenied'), 'error'); }
-    }
-
-    window.setFilter = function(filter, btn) {
-      currentFilter = filter;
-      filterBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-    };
-
-    function applyFilterToImageData(imageData, filterType) {
-      const data = imageData.data;
-      if (filterType === 'monochrome') {
-        for (let i = 0; i < data.length; i += 4) {
-          const gray = Math.round(0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]);
-          data[i] = data[i+1] = data[i+2] = gray;
-        }
-      }
-      return imageData;
-    }
-
-    function getCropDimensions(srcW, srcH) {
-      const containerRatio = TARGET_RATIO;
-      let cropW, cropH, startX, startY;
-      if (srcW / srcH > containerRatio) {
-        cropH = srcH;
-        cropW = Math.round(srcH * containerRatio);
-        startY = 0;
-        startX = Math.round((srcW - cropW) / 2);
-      } else {
-        cropW = srcW;
-        cropH = Math.round(srcW / containerRatio);
-        startX = 0;
-        startY = Math.round((srcH - cropH) / 2);
-      }
-      if (cropW % 2 !== 0) cropW--;
-      if (cropH % 2 !== 0) cropH--;
-      return { cropW, cropH, startX, startY };
-    }
-
-    function startLivePreview() {
-      if (liveAnimationId) cancelAnimationFrame(liveAnimationId);
-      if (!video.videoWidth) { liveAnimationId = requestAnimationFrame(startLivePreview); return; }
-      const containerWidth = cameraWrapper.clientWidth;
-      const containerHeight = cameraWrapper.clientHeight;
-      if (containerWidth === 0 || containerHeight === 0) { liveAnimationId = requestAnimationFrame(startLivePreview); return; }
-      liveCanvas.width = containerWidth;
-      liveCanvas.height = containerHeight;
-      const vw = video.videoWidth, vh = video.videoHeight;
-      const { cropW, cropH, startX, startY } = getCropDimensions(vw, vh);
-      liveCtx.clearRect(0, 0, containerWidth, containerHeight);
-      liveCtx.save();
-      if (mirrorCamera) {
-        liveCtx.translate(containerWidth, 0);
-        liveCtx.scale(-1, 1);
-      }
-      liveCtx.drawImage(video, startX, startY, cropW, cropH, 0, 0, containerWidth, containerHeight);
-      liveCtx.restore();
-      if (currentFilter !== 'none') {
-        const imageData = liveCtx.getImageData(0, 0, containerWidth, containerHeight);
-        applyFilterToImageData(imageData, currentFilter);
-        liveCtx.putImageData(imageData, 0, 0);
-      }
-      liveAnimationId = requestAnimationFrame(startLivePreview);
-    }
-
-    function stopLivePreview() { if (liveAnimationId) { cancelAnimationFrame(liveAnimationId); liveAnimationId = null; } }
-
-    async function loadFrames() {
-      try {
-        const res = await fetch('/api/frames');
-        const frames = await res.json();
-        const activeFrames = frames.filter(f => f.active === 1);
-        frameList.innerHTML = '<div class="frame-item none active" data-frame-id="" onclick="selectFrame(this,\'\',null)">No</div>';
-        activeFrames.forEach(frame => {
-          const div = document.createElement('div');
-          div.className = 'frame-item';
-          div.dataset.frameId = frame.id;
-          div.onclick = () => selectFrame(div, frame.id, `/frames/${frame.filename}`);
-          div.innerHTML = `<img src="/frames/${frame.filename}" alt="${frame.name}">`;
-          frameList.appendChild(div);
-        });
-      } catch (err) { console.error(err); }
-    }
-
-    window.selectFrame = function(el, id, url) {
-      document.querySelectorAll('.frame-item').forEach(i => i.classList.remove('active'));
-      el.classList.add('active');
-      if (url) {
-        currentFrameUrl = url;
-        frameOverlayImg.src = url;
-        frameOverlayImg.style.display = 'block';
-        const img = new Image();
-        img.src = url;
-        img.onload = () => { currentFrame = img; };
-      } else {
-        currentFrame = null;
-        currentFrameUrl = null;
-        frameOverlayImg.src = '';
-        frameOverlayImg.style.display = 'none';
-      }
-    };
-
-    window.startCountdown = function() {
-      if (!video.videoWidth) { showToast(t('cameraNotReady'), 'error'); return; }
-      if (countdownTimer) return;
-      
-      unlockAudio();
-      // Tidak memutar suara instruksi di sini
-      
-      handDetectionActive = false;
-      updateHandStatus('cooldown');
-      disableCapture();
-      let count = countdownSeconds;
-      countdownOverlay.style.display = 'flex';
-      countdownNumber.textContent = count;
-      countdownNumber.style.animation = 'none';
-      void countdownNumber.offsetWidth;
-      countdownNumber.style.animation = 'countBounce 0.9s ease';
-      
-      stopCaptureSound(); // hentikan suara intro jika masih berjalan
-      
-      playCountdownBeep();
-      
-      clearInterval(countdownTimer);
-      countdownTimer = setInterval(() => {
-        count--;
-        if (count <= 0) {
-          clearInterval(countdownTimer);
-          countdownTimer = null;
-          countdownOverlay.style.display = 'none';
-          captureImage();
-          enableCapture();
-          handDetectionActive = true;
-          detectionFrameCount = 0;
-          handDetectedFlag = false;
-          updateHandStatus('idle');
-        } else {
-          countdownNumber.textContent = count;
-          countdownNumber.style.animation = 'none';
-          void countdownNumber.offsetWidth;
-          countdownNumber.style.animation = 'countBounce 0.9s ease';
-          playCountdownBeep();
-        }
-      }, 1000);
-    };
-
-    function captureImage() {
-      const vw = video.videoWidth, vh = video.videoHeight;
-      const { cropW, cropH, startX, startY } = getCropDimensions(vw, vh);
-      const rawCanvas = document.createElement('canvas');
-      rawCanvas.width = cropW;
-      rawCanvas.height = cropH;
-      const rawCtx = rawCanvas.getContext('2d');
-      rawCtx.save();
-      if (mirrorCamera) {
-        rawCtx.translate(cropW, 0);
-        rawCtx.scale(-1, 1);
-      }
-      rawCtx.drawImage(video, startX, startY, cropW, cropH, 0, 0, cropW, cropH);
-      rawCtx.restore();
-      if (currentFilter !== 'none') {
-        const imgData = rawCtx.getImageData(0, 0, cropW, cropH);
-        applyFilterToImageData(imgData, currentFilter);
-        rawCtx.putImageData(imgData, 0, 0);
-      }
-      rawImageData = rawCanvas.toDataURL('image/png', 1.0);
-      canvas.width = cropW;
-      canvas.height = cropH;
-      ctx.clearRect(0, 0, cropW, cropH);
-      ctx.drawImage(rawCanvas, 0, 0);
-      if (currentFrame) ctx.drawImage(currentFrame, 0, 0, cropW, cropH);
-      capturedImageData = canvas.toDataURL('image/png', 1.0);
-      
-      showScreen('preview');
-      
-      setTimeout(() => {
-        playSound(getSoundKey('retake'));
-      }, 400);
-      
-      saveToServer(capturedImageData);
-    }
-
-    async function saveToServer(imageData) {
-      const activeFrame = document.querySelector('.frame-item.active');
-      const frameId = activeFrame ? activeFrame.dataset.frameId || null : null;
-      try {
-        const res = await fetch('/api/photos', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: imageData, frame_id: frameId })
-        });
-        const data = await res.json();
-        savedPhotoId = data.id;
-        savedPhotoUrl = data.url;
-      } catch (err) { console.error(err); }
-    }
-
-    window.retake = async function() {
-      playSound(getSoundKey('retake'));
-      
-      if (savedPhotoId) try { await fetch(`/api/photos/${savedPhotoId}`, { method: 'DELETE' }); } catch (e) {}
-      capturedImageData = rawImageData = savedPhotoUrl = null;
-      savedPhotoId = null;
-      countdownOverlay.style.display = 'none';
-      if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
-      handDetectionActive = true;
-      detectionFrameCount = 0;
-      handDetectedFlag = false;
-      updateHandStatus('idle');
-      
-      introPlayed = false;
-      showScreen('booth');
-      setTimeout(() => playIntroSound(), 800);
-    };
-
-    window.finish = function() {
-      playSound(getSoundKey('print'));
-      
-      showScreen('result');
-      
-      if (savedPhotoUrl) {
-        const fullUrl = window.location.origin + savedPhotoUrl;
-        qrContainer.innerHTML = '';
-        new QRCode(qrContainer, { text: fullUrl, width: 130, height: 130 });
-        qrUrlText.textContent = fullUrl;
-      }
-      finalBrightness.value = 1.0;
-      finalBrightnessVal.textContent = '1.0';
-      updateResultPreview();
-    };
-
-    function updateResultPreview() {
-      if (!rawImageData) return;
-      const brightness = parseFloat(finalBrightness.value);
-      const img = new Image();
-      img.src = rawImageData;
-      img.onload = () => {
-        resultCanvas.width = img.width;
-        resultCanvas.height = img.height;
-        resultCtx.clearRect(0, 0, img.width, img.height);
-        resultCtx.filter = `brightness(${brightness})`;
-        resultCtx.drawImage(img, 0, 0);
-        resultCtx.filter = 'none';
-        if (currentFrame) resultCtx.drawImage(currentFrame, 0, 0, img.width, img.height);
-      };
-    }
-
-    finalBrightness.addEventListener('input', () => {
-      finalBrightnessVal.textContent = finalBrightness.value;
-      updateResultPreview();
-    });
-
-    window.printPhoto = function() {
-      if (!rawImageData) {
-        showToast('No image to print', 'error');
-        return;
-      }
-      playSound(getSoundKey('print'));
-
-      const printBtn = document.getElementById('printBtn');
-      const originalHTML = printBtn.innerHTML;
-      printBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${t('printing')}`;
-      printBtn.disabled = true;
-
-      const finalCanvas = document.getElementById('resultCanvas');
-      const finalImageData = finalCanvas.toDataURL('image/png');
-
-      fetch('/api/settings')
-        .then(res => res.json())
-        .then(settings => {
-          const printerName = settings.printer || 'default';
-          return fetch('/api/print-temp', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageData: finalImageData, printerName: printerName })
-          });
-        })
-        .then(res => res.json())
-        .then(data => {
-          printBtn.innerHTML = originalHTML;
-          printBtn.disabled = false;
-          if (data.success) {
-            showToast(t('printSuccess'), 'success');
-          } else {
-            showToast(t('printFailed') + (data.error || 'Unknown error'), 'error');
-          }
-        })
-        .catch(err => {
-          printBtn.innerHTML = originalHTML;
-          printBtn.disabled = false;
-          showToast(t('printFailed') + err.message, 'error');
-        });
-    };
-
-    window.backToBooth = function() {
-      fetch('/api/print-temp', { method: 'DELETE' }).catch(() => {});
-      capturedImageData = null;
-      rawImageData = null;
-      handDetectionActive = true;
-      detectionFrameCount = 0;
-      handDetectedFlag = false;
-      if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
-      countdownOverlay.style.display = 'none';
-      updateHandStatus('idle');
-      
-      introPlayed = false;
-      showScreen('booth');
-      setTimeout(() => playIntroSound(), 800);
-    };
-
-    document.querySelector('.btn-home').addEventListener('click', () => {
-      fetch('/api/print-temp', { method: 'DELETE' }).catch(() => {});
-    });
-
-    document.addEventListener('click', unlockAudio, { once: true });
-    document.addEventListener('touchstart', unlockAudio, { once: true });
-    document.addEventListener('keydown', unlockAudio, { once: true });
-
-    // ===== HAND DETECTION =====
-    function updateHandStatus(state, fingerCount) {
-      const existingDot = handStatus.querySelector('.pulse-dot');
-      if (existingDot) existingDot.remove();
-      const existingSpinner = handStatus.querySelector('.cooldown-spinner');
-      if (existingSpinner) existingSpinner.remove();
-
-      const iconEl = handStatus.querySelector('.icon');
-      const iconMap = { idle: '✋', detected: '✅', cooldown: '⏳', error: '⚠️', loading: '⏳' };
-      iconEl.textContent = iconMap[state] || '✋';
-
-      const textMap = {
-        idle: t('handHint'), detected: t('handDetected'), cooldown: t('handCooldown'),
-        error: t('handError'), loading: t('loading')
-      };
-      statusText.textContent = textMap[state] || t('handHint');
-
-      if (typeof fingerCount === 'number' && fingerCount >= 0) {
-        fingerBadge.textContent = fingerCount;
-        fingerBadge.style.display = 'inline-flex';
-      } else {
-        fingerBadge.style.display = 'none';
-      }
-
-      handStatus.className = 'hand-status';
-      if (state === 'detected') {
-        handStatus.classList.add('detected');
-        const dot = document.createElement('span');
-        dot.className = 'pulse-dot';
-        handStatus.prepend(dot);
-      } else if (state === 'cooldown') {
-        handStatus.classList.add('waiting');
-        const spinner = document.createElement('span');
-        spinner.className = 'cooldown-spinner';
-        handStatus.prepend(spinner);
-      } else if (state === 'error') {
-        handStatus.classList.add('error');
-      } else if (state === 'loading') {
-        handStatus.classList.add('waiting');
-      }
-
-      if (state === 'loading') initStatus.classList.add('show');
-      else initStatus.classList.remove('show');
-    }
-
-    let handDetectionActive = true, handDetectedFlag = false, detectionFrameCount = 0;
-    const REQUIRED_FRAMES = 2;
-    let detectInterval = null, handsInstance = null, lastFingerCount = 0;
-    let handDetectionReady = false, initAttempts = 0;
-    const MAX_INIT_ATTEMPTS = 10;
-
-    function initHandDetection() {
-      if (typeof Hands === 'undefined') {
-        if (initAttempts < MAX_INIT_ATTEMPTS) { initAttempts++; setTimeout(initHandDetection, 500); }
-        else { console.error('MediaPipe Hands failed to load'); updateHandStatus('error'); }
-        return;
-      }
-      try {
-        handsInstance = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-        handsInstance.setOptions({
-          maxNumHands: 1,
-          modelComplexity: 1,
-          minDetectionConfidence: 0.85,
-          minTrackingConfidence: 0.75
-        });
-        handsInstance.onResults(onHandResults);
-        handsInstance.initialize().then(() => {
-          console.log('MediaPipe Hands initialized successfully');
-          handDetectionReady = true;
-          updateHandStatus('idle');
-          if (video.readyState >= 2) startHandDetection();
-        }).catch((err) => { console.error('Failed to initialize Hands:', err); updateHandStatus('error'); });
-      } catch (err) { console.error('Failed to create Hands instance:', err); updateHandStatus('error'); }
-    }
-
-    function onHandResults(results) {
-      if (!handDetectionActive || countdownTimer || !handDetectionReady) return;
-      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        const landmarks = results.multiHandLandmarks[0];
-        const thumbTip = landmarks[4], thumbMCP = landmarks[2], thumbIP = landmarks[3];
-        const indexTip = landmarks[8], indexPIP = landmarks[6];
-        const middleTip = landmarks[12], middlePIP = landmarks[10];
-        const ringTip = landmarks[16], ringPIP = landmarks[14];
-        const pinkyTip = landmarks[20], pinkyPIP = landmarks[18];
-
-        const palmCenter = {
-          x: (landmarks[0].x + landmarks[5].x + landmarks[9].x + landmarks[13].x + landmarks[17].x) / 5,
-          y: (landmarks[0].y + landmarks[5].y + landmarks[9].y + landmarks[13].y + landmarks[17].y) / 5
-        };
-        const dist = (pt) => Math.sqrt(Math.pow(pt.x - palmCenter.x, 2) + Math.pow(pt.y - palmCenter.y, 2));
-
-        const indexOpenA = indexTip.y < indexPIP.y;
-        const middleOpenA = middleTip.y < middlePIP.y;
-        const ringOpenA = ringTip.y < ringPIP.y;
-        const pinkyOpenA = pinkyTip.y < pinkyPIP.y;
-
-        const indexOpenB = dist(indexTip) > dist(indexPIP) * 0.70;
-        const middleOpenB = dist(middleTip) > dist(middlePIP) * 0.70;
-        const ringOpenB = dist(ringTip) > dist(ringPIP) * 0.70;
-        const pinkyOpenB = dist(pinkyTip) > dist(pinkyPIP) * 0.70;
-
-        const angleOpen = (tip, pip) => {
-          const vTip = { x: tip.x - palmCenter.x, y: tip.y - palmCenter.y };
-          const vPip = { x: pip.x - palmCenter.x, y: pip.y - palmCenter.y };
-          const lenTip = Math.sqrt(vTip.x*vTip.x + vTip.y*vTip.y);
-          const lenPip = Math.sqrt(vPip.x*vPip.x + vPip.y*vPip.y);
-          if (lenTip < 0.001 || lenPip < 0.001) return false;
-          const dot = (vTip.x * vPip.x + vTip.y * vPip.y) / (lenTip * lenPip);
-          return dot < 0.6;
-        };
-        const indexOpenC = angleOpen(indexTip, indexPIP);
-        const middleOpenC = angleOpen(middleTip, middlePIP);
-        const ringOpenC = angleOpen(ringTip, ringPIP);
-        const pinkyOpenC = angleOpen(pinkyTip, pinkyPIP);
-
-        const indexOpen = (indexOpenA?1:0) + (indexOpenB?1:0) + (indexOpenC?1:0) >= 2;
-        const middleOpen = (middleOpenA?1:0) + (middleOpenB?1:0) + (middleOpenC?1:0) >= 2;
-        const ringOpen = (ringOpenA?1:0) + (ringOpenB?1:0) + (ringOpenC?1:0) >= 2;
-        const pinkyOpen = (pinkyOpenA?1:0) + (pinkyOpenB?1:0) + (pinkyOpenC?1:0) >= 2;
-
-        let thumbOpen1 = false;
-        if (results.multiHandedness && results.multiHandedness.length > 0) {
-          const handedness = results.multiHandedness[0].label;
-          if (handedness === 'Right') thumbOpen1 = thumbTip.x > thumbMCP.x;
-          else thumbOpen1 = thumbTip.x < thumbMCP.x;
-        } else thumbOpen1 = Math.abs(thumbTip.x - thumbMCP.x) > 0.04;
-        const thumbOpen2 = thumbIP.x > thumbMCP.x;
-        const thumbDist = dist(thumbTip) > dist(thumbMCP) * 0.7;
-        const thumbOpen = thumbOpen1 || thumbOpen2 || thumbDist;
-
-        let openCount = 0;
-        if (indexOpen) openCount++;
-        if (middleOpen) openCount++;
-        if (ringOpen) openCount++;
-        if (pinkyOpen) openCount++;
-        if (thumbOpen) openCount++;
-
-        if (openCount !== lastFingerCount) {
-          lastFingerCount = openCount;
-          updateHandStatus('idle', openCount);
-        }
-
-        const allOpen = (openCount === 5);
-        if (allOpen) {
-          detectionFrameCount++;
-          if (detectionFrameCount >= REQUIRED_FRAMES && !handDetectedFlag) {
-            handDetectedFlag = true;
-            handDetectionActive = false;
-            updateHandStatus('detected', 5);
-            startCountdown();
-            setTimeout(() => {
-              handDetectionActive = true;
-              detectionFrameCount = 0;
-              handDetectedFlag = false;
-              if (!countdownTimer) updateHandStatus('idle');
-            }, 4000);
-          }
-        } else {
-          detectionFrameCount = Math.max(0, detectionFrameCount - 1);
-          handDetectedFlag = false;
-        }
-      } else {
-        detectionFrameCount = Math.max(0, detectionFrameCount - 2);
-        if (detectionFrameCount === 0 && !countdownTimer && lastFingerCount !== 0) {
-          lastFingerCount = 0;
-          updateHandStatus('idle', 0);
-        }
-        handDetectedFlag = false;
-      }
-    }
-
-    function startHandDetection() {
-      if (!handDetectionReady) { if (!handsInstance) initHandDetection(); return; }
-      if (detectInterval) return;
-      if (video.readyState < 2) { setTimeout(startHandDetection, 200); return; }
-      detectInterval = setInterval(() => {
-        if (video.readyState >= 2 && !video.paused && !video.ended && handDetectionActive && handDetectionReady) {
-          try { handsInstance.send({ image: video }); } catch(err) {}
-        }
-      }, 70);
-    }
-
-    function stopHandDetection() {
-      if (detectInterval) { clearInterval(detectInterval); detectInterval = null; }
-      detectionFrameCount = 0;
-      handDetectedFlag = false;
-      lastFingerCount = 0;
-      if (handDetectionReady) updateHandStatus('idle');
-    }
-
-    // ===== INISIALISASI =====
-    updateHandStatus('loading');
-
-    loadSettings().then(() => {
-      initCamera();
-      loadFrames();
-      const tryInit = () => {
-        if (typeof Hands !== 'undefined') initHandDetection();
-        else if (initAttempts < MAX_INIT_ATTEMPTS) { initAttempts++; setTimeout(tryInit, 500); }
-        else { console.error('MediaPipe Hands not available'); updateHandStatus('error'); }
-      };
-      tryInit();
-      
-      const waitForReady = setInterval(() => {
-        if (video.videoWidth > 0 && handDetectionReady) {
-          clearInterval(waitForReady);
-          playIntroSound();
-        }
-      }, 300);
-      setTimeout(() => {
-        clearInterval(waitForReady);
-        if (!introPlayed) playIntroSound();
-      }, 5000);
-    });
-
-    video.addEventListener('loadeddata', () => {
-      if (typeof Hands !== 'undefined' && !handsInstance) initHandDetection();
-      if (handDetectionReady) startHandDetection();
-    });
-
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && screens.booth.classList.contains('active')) {
-        if (handDetectionReady && !detectInterval) startHandDetection();
-      }
-    });
-
-    window.addEventListener('error', (e) => {
-      if (e.message && e.message.includes('Hands')) {
-        console.warn('Hand detection error, retrying...');
-        if (!handsInstance) initHandDetection();
-      }
-    });
-
+  (function(){
+    function showToast(m,t='success'){const c=document.getElementById('toastContainer');const a=document.createElement('div');a.className=`toast ${t}`;const i=t==='success'?'✅':'❌';a.innerHTML=`<span class="icon">${i}</span> ${m}`;c.appendChild(a);requestAnimationFrame(()=>a.classList.add('show'));setTimeout(()=>{a.classList.remove('show');setTimeout(()=>a.remove(),400)},3500)}
+    const screens={booth:document.getElementById('boothScreen'),preview:document.getElementById('previewScreen'),result:document.getElementById('resultScreen')};
+    const video=document.getElementById('video');const liveCanvas=document.getElementById('liveCanvas');const liveCtx=liveCanvas.getContext('2d',{willReadFrequently:true});const canvas=document.getElementById('canvas');const ctx=canvas.getContext('2d');const resultCanvas=document.getElementById('resultCanvas');const resultCtx=resultCanvas.getContext('2d');const countdownOverlay=document.getElementById('countdownOverlay');const countdownNumber=document.getElementById('countdownNumber');const frameOverlayImg=document.getElementById('frameOverlayImg');const frameList=document.getElementById('frameList');const finalBrightness=document.getElementById('finalBrightness');const finalBrightnessVal=document.getElementById('finalBrightnessVal');const qrContainer=document.getElementById('qrcode');const qrUrlText=document.getElementById('qrUrlText');const captureBtnInline=document.getElementById('captureBtnInline');const captureBtnSidebar=document.getElementById('captureBtnSidebar');const cameraWrapper=document.getElementById('cameraWrapper');const cooldownBar=document.getElementById('cooldownBar');const printBtn=document.getElementById('printBtn');const backHomeBtn=document.getElementById('backHomeBtn');
+    const framesLabel=document.getElementById('framesLabel');const filterLabel=document.getElementById('filterLabel');const resultTitle=document.getElementById('resultTitle');const brightnessLabel=document.getElementById('brightnessLabel');const filterBtns=document.querySelectorAll('.filter-btn');const retakeBtn=document.querySelector('.retake-btn');const finishBtn=document.querySelector('.finish-btn');
+    let currentFrame=null,currentFrameUrl=null,rawImageData=null,capturedImageData=null,savedPhotoId=null,savedPhotoUrl=null,stream=null,countdownTimer=null,currentFilter='none',liveAnimationId=null,mirrorCamera=true;let countdownSeconds=5;const TARGET_RATIO=7.2/15;
+    const translations={en:{frames:'Frames',filter:'Filter',none:'None',monochrome:'Mono',capture:'Capture',retake:'Retake',continue:'Continue',yourPhotoReady:'Your Photo is Ready',brightness:'Brightness',print:'Print',newPhoto:'New',home:'Home',cameraDenied:'Camera access denied.',cameraNotReady:'Camera is not ready.',printing:'Printing...',printSuccess:'Photo sent to printer!',printFailed:'Print failed: '},id:{frames:'Bingkai',filter:'Filter',none:'Tanpa',monochrome:'Monokrom',capture:'Ambil Foto',retake:'Ulangi',continue:'Lanjutkan',yourPhotoReady:'Foto Anda Siap',brightness:'Kecerahan',print:'Cetak',newPhoto:'Baru',home:'Selesai',cameraDenied:'Akses kamera ditolak.',cameraNotReady:'Kamera belum siap.',printing:'Mencetak...',printSuccess:'Foto terkirim ke printer!',printFailed:'Gagal mencetak: '}};let currentLang='en';function t(k){return translations[currentLang]?.[k]||translations['en'][k]||k}
+    let audioElements={};let audioUnlocked=false;let introPlayed=false;let currentAudio=null;
+    function unlockAudio(){if(audioUnlocked)return;const c=new(window.AudioContext||window.webkitAudioContext)();const b=c.createBuffer(1,1,22050);const s=c.createBufferSource();s.buffer=b;s.connect(c.destination);s.start(0);if(c.state==='suspended')c.resume();Object.values(audioElements).forEach(a=>{a.load();a.play().then(()=>{a.pause();a.currentTime=0}).catch(()=>{})});audioUnlocked=true}
+    async function getSoundUrl(mk){try{const[rs,so]=await Promise.all([fetch('/api/sound-settings'),fetch('/api/sounds')]);const ss=await rs.json();const sounds=await so.json();const id=ss[mk];if(!id)return null;const s=sounds.find(x=>x.id==id);if(!s)return null;return`/sounds/${s.filename}`}catch(e){return null}}
+    function getSoundKey(bk){const s=currentLang==='id'?'_id':'';return`sound_${bk}_id${s}`}
+    async function preloadAudioElement(mk){const u=await getSoundUrl(mk);if(!u)return;const a=new Audio(u);a.volume=1.0;a.preload='auto';a.load();audioElements[mk]=a}
+    function playSound(mk){const a=audioElements[mk];if(!a)return;if(currentAudio){currentAudio.pause();currentAudio.currentTime=0;currentAudio=null}a.pause();a.currentTime=0;a.volume=1.0;const p=a.play();if(p!==undefined){p.catch(()=>{setTimeout(()=>{a.currentTime=0;a.play().catch(()=>{})},100)})}currentAudio=a}
+    function stopCaptureSound(){if(!currentAudio)return;const ck=getSoundKey('capture');const ca=audioElements[ck];if(currentAudio===ca){currentAudio.pause();currentAudio.currentTime=0;currentAudio=null}}
+    async function preloadAllSounds(){const ks=[getSoundKey('capture'),getSoundKey('retake'),getSoundKey('print')];const uk=[...new Set(ks)];for(const k of uk){await preloadAudioElement(k)}}
+    function playCountdownBeep(){try{const c=new(window.AudioContext||window.webkitAudioContext)();if(c.state==='suspended')c.resume();const o=c.createOscillator();const g=c.createGain();o.connect(g);g.connect(c.destination);o.frequency.value=880;o.type='sine';g.gain.setValueAtTime(.4,c.currentTime);g.gain.exponentialRampToValueAtTime(.01,c.currentTime+.3);o.start(c.currentTime);o.stop(c.currentTime+.3)}catch(e){}}
+    function playIntroSound(){if(introPlayed)return;if(!handDetectionReady||!video.videoWidth){setTimeout(playIntroSound,500);return}introPlayed=true;unlockAudio();playSound(getSoundKey('capture'))}
+    async function loadSettings(){try{const r=await fetch('/api/settings');const s=await r.json();if(s.language&&translations[s.language])currentLang=s.language;if(s.countdown_seconds)countdownSeconds=parseInt(s.countdown_seconds,10)||5;mirrorCamera=s.mirror_camera!=='false';applyLanguage();updateBackButtonText();await preloadAllSounds()}catch(e){console.error('Failed to load settings:',e);applyLanguage()}}
+    function updateBackButtonText(){if(backHomeBtn){const s=backHomeBtn.querySelector('span');if(s)s.textContent=t('home')}}
+    function applyLanguage(){framesLabel.textContent=t('frames');filterLabel.textContent=t('filter');if(filterBtns.length>=2){filterBtns[0].textContent=t('none');filterBtns[1].textContent=t('monochrome')}captureBtnInline.innerHTML=`<i class="fas fa-camera"></i> ${t('capture')}`;captureBtnSidebar.innerHTML=`<i class="fas fa-camera"></i> ${t('capture')}`;if(retakeBtn)retakeBtn.textContent=t('retake');if(finishBtn)finishBtn.textContent=t('continue');if(resultTitle)resultTitle.textContent=t('yourPhotoReady');if(brightnessLabel)brightnessLabel.textContent=t('brightness');if(printBtn)printBtn.innerHTML=`<i class="fas fa-print"></i> ${t('print')}`;const hb=document.querySelector('.btn-home');if(hb)hb.innerHTML=`<i class="fas fa-home"></i> ${t('home')}`;const nb=document.querySelector('.btn-booth');if(nb)nb.innerHTML=`<i class="fas fa-camera"></i> ${t('newPhoto')}`;updateBackButtonText()}
+    function disableCapture(){captureBtnInline.disabled=true;captureBtnSidebar.disabled=true}
+    function enableCapture(){captureBtnInline.disabled=false;captureBtnSidebar.disabled=false}
+    function showScreen(name){Object.values(screens).forEach(s=>s.classList.remove('active'));screens[name].classList.add('active');if(name==='booth'){startLivePreview();startHandDetection()}else{stopLivePreview();stopHandDetection()}if(name==='result')applyLanguage()}
+    async function initCamera(){try{if(stream)stream.getTracks().forEach(t=>t.stop());stream=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:640},height:{ideal:480},facingMode:'environment'}});video.srcObject=stream;await video.play();startLivePreview();setTimeout(()=>startHandDetection(),300)}catch(err){showToast(t('cameraDenied'),'error')}}
+    window.setFilter=function(f,b){currentFilter=f;filterBtns.forEach(x=>x.classList.remove('active'));b.classList.add('active')};
+    function applyFilterToImageData(id,f){const d=id.data;if(f==='monochrome'){for(let i=0;i<d.length;i+=4){const g=Math.round(.299*d[i]+.587*d[i+1]+.114*d[i+2]);d[i]=d[i+1]=d[i+2]=g}}return id}
+    function getCropDimensions(w,h){const r=TARGET_RATIO;let cw,ch,sx,sy;if(w/h>r){ch=h;cw=Math.round(h*r);sy=0;sx=Math.round((w-cw)/2)}else{cw=w;ch=Math.round(w/r);sx=0;sy=Math.round((h-ch)/2)}if(cw%2!==0)cw--;if(ch%2!==0)ch--;return{cropW:cw,cropH:ch,startX:sx,startY:sy}}
+    function startLivePreview(){if(liveAnimationId)cancelAnimationFrame(liveAnimationId);if(!video.videoWidth){liveAnimationId=requestAnimationFrame(startLivePreview);return}const cw=cameraWrapper.clientWidth;const ch=cameraWrapper.clientHeight;if(cw===0||ch===0){liveAnimationId=requestAnimationFrame(startLivePreview);return}liveCanvas.width=cw;liveCanvas.height=ch;const vw=video.videoWidth,vh=video.videoHeight;const{cropW,cropH,startX,startY}=getCropDimensions(vw,vh);liveCtx.clearRect(0,0,cw,ch);liveCtx.save();if(mirrorCamera){liveCtx.translate(cw,0);liveCtx.scale(-1,1)}liveCtx.drawImage(video,startX,startY,cropW,cropH,0,0,cw,ch);liveCtx.restore();if(currentFilter!=='none'){const id=liveCtx.getImageData(0,0,cw,ch);applyFilterToImageData(id,currentFilter);liveCtx.putImageData(id,0,0)}liveAnimationId=requestAnimationFrame(startLivePreview)}
+    function stopLivePreview(){if(liveAnimationId){cancelAnimationFrame(liveAnimationId);liveAnimationId=null}}
+    async function loadFrames(){try{const r=await fetch('/api/frames');const frames=await r.json();const af=frames.filter(f=>f.active===1);frameList.innerHTML='<div class="frame-item none active" data-frame-id="" onclick="selectFrame(this,\'\',null)"><span>No</span></div>';af.forEach(f=>{const d=document.createElement('div');d.className='frame-item';d.dataset.frameId=f.id;d.onclick=()=>selectFrame(d,f.id,`/frames/${f.filename}`);d.innerHTML=`<img src="/frames/${f.filename}" alt="${f.name}"><span class="frame-name">${f.name}</span>`;frameList.appendChild(d)})}catch(e){console.error(e)}}
+    window.selectFrame=function(el,id,url){document.querySelectorAll('.frame-item').forEach(i=>i.classList.remove('active'));el.classList.add('active');if(url){currentFrameUrl=url;frameOverlayImg.src=url;frameOverlayImg.style.display='block';const i=new Image();i.src=url;i.onload=()=>{currentFrame=i}}else{currentFrame=null;currentFrameUrl=null;frameOverlayImg.src='';frameOverlayImg.style.display='none'}};
+    window.startCountdown=function(){if(!video.videoWidth){showToast(t('cameraNotReady'),'error');return}if(countdownTimer)return;unlockAudio();handDetectionActive=false;disableCapture();let c=countdownSeconds;countdownOverlay.style.display='flex';countdownNumber.textContent=c;countdownNumber.style.animation='none';void countdownNumber.offsetWidth;countdownNumber.style.animation='countBounce .9s ease';stopCaptureSound();playCountdownBeep();clearInterval(countdownTimer);countdownTimer=setInterval(()=>{c--;if(c<=0){clearInterval(countdownTimer);countdownTimer=null;countdownOverlay.style.display='none';captureImage();enableCapture();handDetectionActive=true;detectionFrameCount=0;handDetectedFlag=false}else{countdownNumber.textContent=c;countdownNumber.style.animation='none';void countdownNumber.offsetWidth;countdownNumber.style.animation='countBounce .9s ease';playCountdownBeep()}},1000)};
+    function captureImage(){const vw=video.videoWidth,vh=video.videoHeight;const{cropW,cropH,startX,startY}=getCropDimensions(vw,vh);const rc=document.createElement('canvas');rc.width=cropW;rc.height=cropH;const rctx=rc.getContext('2d');rctx.save();if(mirrorCamera){rctx.translate(cropW,0);rctx.scale(-1,1)}rctx.drawImage(video,startX,startY,cropW,cropH,0,0,cropW,cropH);rctx.restore();if(currentFilter!=='none'){const id=rctx.getImageData(0,0,cropW,cropH);applyFilterToImageData(id,currentFilter);rctx.putImageData(id,0,0)}rawImageData=rc.toDataURL('image/png',1.0);canvas.width=cropW;canvas.height=cropH;ctx.clearRect(0,0,cropW,cropH);ctx.drawImage(rc,0,0);if(currentFrame)ctx.drawImage(currentFrame,0,0,cropW,cropH);capturedImageData=canvas.toDataURL('image/png',1.0);showScreen('preview');setTimeout(()=>{playSound(getSoundKey('retake'))},400);saveToServer(capturedImageData)}
+    async function saveToServer(id){const af=document.querySelector('.frame-item.active');const fid=af?af.dataset.frameId||null:null;try{const r=await fetch('/api/photos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:id,frame_id:fid})});const d=await r.json();savedPhotoId=d.id;savedPhotoUrl=d.url}catch(e){console.error(e)}}
+    window.retake=async function(){playSound(getSoundKey('retake'));if(savedPhotoId)try{await fetch(`/api/photos/${savedPhotoId}`,{method:'DELETE'})}catch(e){}capturedImageData=rawImageData=savedPhotoUrl=null;savedPhotoId=null;countdownOverlay.style.display='none';if(countdownTimer){clearInterval(countdownTimer);countdownTimer=null}handDetectionActive=true;detectionFrameCount=0;handDetectedFlag=false;introPlayed=false;showScreen('booth');setTimeout(()=>playIntroSound(),800)};
+    window.finish=function(){playSound(getSoundKey('print'));showScreen('result');if(savedPhotoUrl){const fu=window.location.origin+savedPhotoUrl;qrContainer.innerHTML='';new QRCode(qrContainer,{text:fu,width:150,height:150});qrUrlText.textContent=fu}finalBrightness.value=1.0;finalBrightnessVal.textContent='1.0';updateResultPreview()};
+    function updateResultPreview(){if(!rawImageData)return;const b=parseFloat(finalBrightness.value);const i=new Image();i.src=rawImageData;i.onload=()=>{resultCanvas.width=i.width;resultCanvas.height=i.height;resultCtx.clearRect(0,0,i.width,i.height);resultCtx.filter=`brightness(${b})`;resultCtx.drawImage(i,0,0);resultCtx.filter='none';if(currentFrame)resultCtx.drawImage(currentFrame,0,0,i.width,i.height)}}
+    finalBrightness.addEventListener('input',()=>{finalBrightnessVal.textContent=finalBrightness.value;updateResultPreview()});
+    window.printPhoto=function(){if(!rawImageData){showToast('No image to print','error');return}playSound(getSoundKey('print'));const pb=document.getElementById('printBtn');const oh=pb.innerHTML;pb.innerHTML=`<i class="fas fa-spinner fa-spin"></i> ${t('printing')}`;pb.disabled=true;const fc=document.getElementById('resultCanvas');const fd=fc.toDataURL('image/png');fetch('/api/settings').then(r=>r.json()).then(s=>{const pn=s.printer||'default';return fetch('/api/print-temp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imageData:fd,printerName:pn})})}).then(r=>r.json()).then(d=>{pb.innerHTML=oh;pb.disabled=false;if(d.success){showToast(t('printSuccess'),'success')}else{showToast(t('printFailed')+(d.error||'Unknown error'),'error')}}).catch(e=>{pb.innerHTML=oh;pb.disabled=false;showToast(t('printFailed')+e.message,'error')})};
+    window.backToBooth=function(){fetch('/api/print-temp',{method:'DELETE'}).catch(()=>{});capturedImageData=null;rawImageData=null;handDetectionActive=true;detectionFrameCount=0;handDetectedFlag=false;if(countdownTimer){clearInterval(countdownTimer);countdownTimer=null}countdownOverlay.style.display='none';introPlayed=false;showScreen('booth');setTimeout(()=>playIntroSound(),800)};
+    document.querySelector('.btn-home').addEventListener('click',()=>{fetch('/api/print-temp',{method:'DELETE'}).catch(()=>{})});
+    document.addEventListener('click',unlockAudio,{once:true});document.addEventListener('touchstart',unlockAudio,{once:true});document.addEventListener('keydown',unlockAudio,{once:true});
+    let handDetectionActive=true,handDetectedFlag=false,detectionFrameCount=0;const REQUIRED_FRAMES=2;let detectInterval=null,handsInstance=null,lastFingerCount=0;let handDetectionReady=false,initAttempts=0;const MAX_INIT_ATTEMPTS=10;
+    function initHandDetection(){if(typeof Hands==='undefined'){if(initAttempts<MAX_INIT_ATTEMPTS){initAttempts++;setTimeout(initHandDetection,500)}else{console.error('MediaPipe Hands failed to load')}return}try{handsInstance=new Hands({locateFile:(f)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});handsInstance.setOptions({maxNumHands:1,modelComplexity:1,minDetectionConfidence:.85,minTrackingConfidence:.75});handsInstance.onResults(onHandResults);handsInstance.initialize().then(()=>{console.log('MediaPipe Hands initialized successfully');handDetectionReady=true;if(video.readyState>=2)startHandDetection()}).catch((err)=>{console.error('Failed to initialize Hands:',err)})}catch(err){console.error('Failed to create Hands instance:',err)}}
+    function onHandResults(results){if(!handDetectionActive||countdownTimer||!handDetectionReady)return;if(results.multiHandLandmarks&&results.multiHandLandmarks.length>0){const lm=results.multiHandLandmarks[0];const wrist=lm[0];const tt=lm[4],tm=lm[2],ti=lm[3];const it=lm[8],ip=lm[6];const mt=lm[12],mp=lm[10];const rt=lm[16],rp=lm[14];const pt=lm[20],pp=lm[18];const mcpIndices=[5,9,13,17];const avgZ=mcpIndices.reduce((s,idx)=>s+lm[idx].z,0)/mcpIndices.length;const fingersZ=[lm[8].z,lm[12].z,lm[16].z,lm[20].z];const avgFingerZ=fingersZ.reduce((a,b)=>a+b,0)/fingersZ.length;const palmFacing=avgZ<wrist.z-0.008&&avgFingerZ<wrist.z-0.005;const pc={x:(lm[0].x+lm[5].x+lm[9].x+lm[13].x+lm[17].x)/5,y:(lm[0].y+lm[5].y+lm[9].y+lm[13].y+lm[17].y)/5};const dist=(p)=>Math.sqrt(Math.pow(p.x-pc.x,2)+Math.pow(p.y-pc.y,2));const ioA=it.y<ip.y;const moA=mt.y<mp.y;const roA=rt.y<rp.y;const poA=pt.y<pp.y;const ioB=dist(it)>dist(ip)*.70;const moB=dist(mt)>dist(mp)*.70;const roB=dist(rt)>dist(rp)*.70;const poB=dist(pt)>dist(pp)*.70;const angleOpen=(tip,pip)=>{const vt={x:tip.x-pc.x,y:tip.y-pc.y};const vp={x:pip.x-pc.x,y:pip.y-pc.y};const lt=Math.sqrt(vt.x*vt.x+vt.y*vt.y);const lp=Math.sqrt(vp.x*vp.x+vp.y*vp.y);if(lt<.001||lp<.001)return false;const dot=(vt.x*vp.x+vt.y*vp.y)/(lt*lp);return dot<.6};const ioC=angleOpen(it,ip);const moC=angleOpen(mt,mp);const roC=angleOpen(rt,rp);const poC=angleOpen(pt,pp);const io=(ioA?1:0)+(ioB?1:0)+(ioC?1:0)>=2;const mo=(moA?1:0)+(moB?1:0)+(moC?1:0)>=2;const ro=(roA?1:0)+(roB?1:0)+(roC?1:0)>=2;const po=(poA?1:0)+(poB?1:0)+(poC?1:0)>=2;let to1=false;if(results.multiHandedness&&results.multiHandedness.length>0){const h=results.multiHandedness[0].label;if(h==='Right')to1=tt.x>tm.x;else to1=tt.x<tm.x}else to1=Math.abs(tt.x-tm.x)>.04;const to2=ti.x>tm.x;const td=dist(tt)>dist(tm)*.7;const to=to1||to2||td;let oc=0;if(io)oc++;if(mo)oc++;if(ro)oc++;if(po)oc++;if(to)oc++;if(oc!==lastFingerCount){lastFingerCount=oc}if(oc===5&&palmFacing){detectionFrameCount++;if(detectionFrameCount>=REQUIRED_FRAMES&&!handDetectedFlag){handDetectedFlag=true;handDetectionActive=false;startCountdown();setTimeout(()=>{handDetectionActive=true;detectionFrameCount=0;handDetectedFlag=false},4000)}}else{detectionFrameCount=Math.max(0,detectionFrameCount-1);handDetectedFlag=false}}else{detectionFrameCount=Math.max(0,detectionFrameCount-2);if(detectionFrameCount===0&&!countdownTimer&&lastFingerCount!==0){lastFingerCount=0}handDetectedFlag=false}}
+    function startHandDetection(){if(!handDetectionReady){if(!handsInstance)initHandDetection();return}if(detectInterval)return;if(video.readyState<2){setTimeout(startHandDetection,200);return}detectInterval=setInterval(()=>{if(video.readyState>=2&&!video.paused&&!video.ended&&handDetectionActive&&handDetectionReady){try{handsInstance.send({image:video})}catch(e){}}},70)}
+    function stopHandDetection(){if(detectInterval){clearInterval(detectInterval);detectInterval=null}detectionFrameCount=0;handDetectedFlag=false;lastFingerCount=0}
+    loadSettings().then(()=>{initCamera();loadFrames();const ti=()=>{if(typeof Hands!=='undefined')initHandDetection();else if(initAttempts<MAX_INIT_ATTEMPTS){initAttempts++;setTimeout(ti,500)}else{console.error('MediaPipe Hands not available')}};ti();const wfr=setInterval(()=>{if(video.videoWidth>0&&handDetectionReady){clearInterval(wfr);playIntroSound()}},300);setTimeout(()=>{clearInterval(wfr);if(!introPlayed)playIntroSound()},5000)});
+    video.addEventListener('loadeddata',()=>{if(typeof Hands!=='undefined'&&!handsInstance)initHandDetection();if(handDetectionReady)startHandDetection()});
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden&&screens.booth.classList.contains('active')){if(handDetectionReady&&!detectInterval)startHandDetection()}});
+    window.addEventListener('error',(e)=>{if(e.message&&e.message.includes('Hands')){console.warn('Hand detection error, retrying...');if(!handsInstance)initHandDetection()}});
   })();
 </script>
 </body>

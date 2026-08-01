@@ -6,10 +6,21 @@ const { v4: uuidv4 } = require('uuid');
 const Database = require('better-sqlite3');
 const sharp = require('sharp');
 const { exec } = require('child_process');
+const cors = require('cors');
+const http = require('http');
+const https = require('https');
+const selfsigned = require('selfsigned');
 
 const app = express();
-const PORT = 3000;
+const HTTP_PORT = 3000;
+const HTTPS_PORT = 3443;
 
+// ---------- Middleware ----------
+app.use(cors({ origin: '*' }));
+app.use(express.json({ limit: '20mb' }));
+app.use(express.static('public'));
+
+// ---------- Database ----------
 const db = new Database('foto-booth.db');
 db.pragma('journal_mode = WAL');
 
@@ -69,9 +80,6 @@ if (!hasCategoryColumn) {
   db.exec("ALTER TABLE sounds ADD COLUMN category TEXT NOT NULL DEFAULT 'general'");
 }
 
-app.use(express.json({ limit: '20mb' }));
-app.use(express.static('public'));
-
 // Buat folder yang diperlukan
 ['public/frames', 'public/photos', 'public/print', 'public/sounds', 'public/music', 'uploads'].forEach(dir => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -93,7 +101,8 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }
 });
 
-// ==================== SOUND API ====================
+// ==================== API Endpoints ====================
+// SOUNDS
 app.get('/api/sounds', (req, res) => {
   const sounds = db.prepare('SELECT * FROM sounds ORDER BY category, created_at DESC').all();
   res.json(sounds);
@@ -126,22 +135,17 @@ app.get('/api/sound-settings', (req, res) => {
   res.json(soundSettings);
 });
 
-// ==================== BACKGROUND MUSIC API (single file) ====================
+// BACKGROUND MUSIC
 app.post('/api/background-music', upload.single('music'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Audio file required' });
-  
   const filename = req.file.filename;
   const destPath = path.join('public/music', filename);
   fs.renameSync(req.file.path, destPath);
-
-  // Hapus file lama jika ada
   const oldRow = db.prepare("SELECT value FROM settings WHERE key = 'background_music'").get();
   if (oldRow && oldRow.value) {
     const oldPath = path.join('public/music', oldRow.value);
     if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
   }
-
-  // Simpan filename ke settings
   db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run('background_music', filename);
   res.json({ success: true, filename });
 });
@@ -158,7 +162,7 @@ app.delete('/api/background-music', (req, res) => {
   }
 });
 
-// ==================== FRAMES API ====================
+// FRAMES
 app.get('/api/frames', (req, res) => {
   const frames = db.prepare('SELECT * FROM frames ORDER BY created_at DESC').all();
   res.json(frames);
@@ -192,7 +196,7 @@ app.delete('/api/frames/:id', (req, res) => {
   res.json({ success: true });
 });
 
-// ==================== PHOTOS API ====================
+// PHOTOS
 app.post('/api/photos', express.json({ limit: '20mb' }), (req, res) => {
   const { image, frame_id } = req.body;
   if (!image) return res.status(400).json({ error: 'Image data missing' });
@@ -258,7 +262,7 @@ app.get('/api/photos/dates', (req, res) => {
   res.json(dates);
 });
 
-// ==================== SETTINGS API ====================
+// SETTINGS
 app.get('/api/settings', (req, res) => {
   const rows = db.prepare('SELECT key, value FROM settings').all();
   const settings = {};
@@ -273,7 +277,7 @@ app.post('/api/settings', (req, res) => {
   res.json({ success: true });
 });
 
-// ==================== PRINTER API ====================
+// PRINTER
 app.get('/api/printers', (req, res) => {
   const cmd = 'wmic printer get name';
   exec(cmd, (error, stdout) => {
@@ -358,8 +362,48 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || 'Server error' });
 });
 
+// Route untuk halaman
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/booth', (req, res) => res.sendFile(path.join(__dirname, 'public', 'booth.html')));
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 
-app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
+// ==================== SERVER HTTP (port 3000) ====================
+http.createServer(app).listen(HTTP_PORT, '0.0.0.0', () => {
+  console.log(`✅ HTTP Server running at http://localhost:${HTTP_PORT}`);
+  console.log(`📡 Access from other devices using http://<your-ip>:${HTTP_PORT}`);
+  console.log(`\n⚠️  For camera access from other devices, you need HTTPS:`);
+  console.log(`   https://<your-ip>:${HTTPS_PORT} (self-signed certificate)`);
+  console.log(`   Browser will show warning - proceed anyway.\n`);
+});
+
+// ==================== SERVER HTTPS (port 3443) ====================
+// Buat sertifikat self-signed
+const attrs = [{ name: 'commonName', value: 'localhost' }];
+const altNames = [
+  'DNS:localhost',
+  'DNS:127.0.0.1',
+  'IP:127.0.0.1'
+];
+const pems = selfsigned.generate(attrs, {
+  days: 365,
+  altNames: altNames,
+  algorithm: 'sha256'
+});
+
+const httpsOptions = {
+  key: pems.private,
+  cert: pems.cert,
+  // Konfigurasi minimal untuk kompatibilitas maksimal
+  secureOptions: require('constants').SSL_OP_NO_SSLv2 |
+                  require('constants').SSL_OP_NO_SSLv3 |
+                  require('constants').SSL_OP_NO_TLSv1 |
+                  require('constants').SSL_OP_NO_TLSv1_1,
+  // Gunakan cipher default Node.js (lebih kompatibel)
+  ciphers: 'DEFAULT@SECLEVEL=1'
+};
+
+https.createServer(httpsOptions, app).listen(HTTPS_PORT, '0.0.0.0', () => {
+  console.log(`🔒 HTTPS Server running at https://localhost:${HTTPS_PORT}`);
+  console.log(`📡 Access from other devices using https://<your-ip>:${HTTPS_PORT}`);
+  console.log(`⚠️  Browser will show security warning - proceed anyway.\n`);
+});
