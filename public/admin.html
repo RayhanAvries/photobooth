@@ -563,6 +563,7 @@
     async function loadBackgroundMusicStatus() {
       try {
         const res = await fetch('/api/settings');
+        if (!res.ok) throw new Error('Failed to load settings');
         const settings = await res.json();
         const filename = settings.background_music || '';
         const infoSpan = document.getElementById('bgMusicInfo');
@@ -581,35 +582,63 @@
       if (!confirm('Delete the background music?')) return;
       try {
         const res = await fetch('/api/background-music', { method: 'DELETE' });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Failed to delete');
+        }
         const data = await res.json();
         if (data.success) {
           showToast('Background music deleted');
           loadBackgroundMusicStatus();
         } else {
-          showToast('Failed to delete', 'error');
+          showToast('Failed to delete');
         }
-      } catch (err) { showToast('Error: ' + err.message, 'error'); }
+      } catch (err) { showToast('Error: ' + err.message); }
     }
 
-    document.getElementById('bgMusicForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const errorEl = document.getElementById('bgMusicError');
-      errorEl.textContent = '';
-      const formData = new FormData(e.target);
-      try {
-        const res = await fetch('/api/background-music', { method: 'POST', body: formData });
-        const data = await res.json();
-        if (res.ok) {
-          showToast('Background music uploaded!');
-          e.target.reset();
-          loadBackgroundMusicStatus();
-        } else {
-          errorEl.textContent = data.error || 'Upload failed';
+    // PERBAIKAN: Background music upload dengan error handling lebih baik
+    const bgMusicForm = document.getElementById('bgMusicForm');
+    if (bgMusicForm) {
+      bgMusicForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const errorEl = document.getElementById('bgMusicError');
+        errorEl.textContent = '';
+        const formData = new FormData(e.target);
+        
+        try {
+          console.log('Uploading background music...');
+          const res = await fetch('/api/background-music', { 
+            method: 'POST', 
+            body: formData
+            // Jangan set Content-Type header, biarkan browser yang set dengan boundary
+          });
+          
+          console.log('Response status:', res.status);
+          
+          // Coba parse response sebagai JSON
+          const contentType = res.headers.get('content-type');
+          if (!contentType || !contentType.includes('application/json')) {
+            const text = await res.text();
+            console.error('Non-JSON response:', text);
+            throw new Error('Server returned non-JSON response. Check console.');
+          }
+          
+          const data = await res.json();
+          console.log('Response data:', data);
+          
+          if (res.ok) {
+            showToast('Background music uploaded!');
+            e.target.reset();
+            loadBackgroundMusicStatus();
+          } else {
+            errorEl.textContent = data.error || 'Upload failed';
+          }
+        } catch (err) {
+          console.error('Upload error:', err);
+          errorEl.textContent = 'Error: ' + err.message;
         }
-      } catch (err) {
-        errorEl.textContent = 'Error: ' + err.message;
-      }
-    });
+      });
+    }
 
     async function loadSettings() {
       try {

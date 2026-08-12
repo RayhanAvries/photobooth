@@ -6,7 +6,6 @@ const { v4: uuidv4 } = require('uuid');
 const Database = require('better-sqlite3');
 const sharp = require('sharp');
 const { exec } = require('child_process');
-const os = require('os');
 
 const app = express();
 const PORT = 3000;
@@ -71,10 +70,8 @@ if (!hasCategoryColumn) {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static('public'));
 
-// Handle favicon
-app.get('/favicon.ico', (req, res) => {
-  res.status(204).end();
-});
+// Serve photos directly
+app.use('/photos', express.static(path.join(__dirname, 'public', 'photos')));
 
 ['public/frames', 'public/photos', 'public/print', 'public/sounds', 'public/music', 'uploads'].forEach(dir => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -255,39 +252,31 @@ app.get('/api/photos/dates', (req, res) => {
   res.json(dates);
 });
 
-// PERBAIKAN: Download endpoint dengan debugging
+// DOWNLOAD ENDPOINT - Diperbaiki
 app.get('/download/:filename', (req, res) => {
   const filename = req.params.filename;
+  // Cari file di folder public/photos
   const filePath = path.join(__dirname, 'public', 'photos', filename);
   
-  console.log('Download request for:', filename);
-  console.log('Full path:', filePath);
-  console.log('File exists:', fs.existsSync(filePath));
+  console.log('Download request:', filename);
+  console.log('Looking at:', filePath);
   
   if (!fs.existsSync(filePath)) {
     console.error('File not found:', filePath);
-    return res.status(404).send('File not found');
+    return res.status(404).json({ error: 'File not found' });
   }
 
-  // Cek ekstensi file untuk menentukan content type
   const ext = path.extname(filename).toLowerCase();
   let contentType = 'image/png';
-  if (ext === '.jpg' || ext === '.jpeg') {
-    contentType = 'image/jpeg';
-  }
-
-  res.download(filePath, `Kidversa_Studio_${filename}`, (err) => {
-    if (err) {
-      console.error('Download error:', err);
-      if (!res.headersSent) {
-        res.status(500).send('Download failed');
-      }
-    }
-  });
+  if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
+  
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Content-Disposition', `attachment; filename="Kidversa_Studio_${filename}"`);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  
+  const fileStream = fs.createReadStream(filePath);
+  fileStream.pipe(res);
 });
-
-// Serve photos langsung dari folder public/photos
-app.use('/photos', express.static(path.join(__dirname, 'public', 'photos')));
 
 app.get('/api/settings', (req, res) => {
   const rows = db.prepare('SELECT key, value FROM settings').all();
@@ -304,51 +293,28 @@ app.post('/api/settings', (req, res) => {
 });
 
 app.get('/api/printers', (req, res) => {
-  const platform = os.platform();
-  
-  if (platform === 'win32') {
-    // Windows: gunakan wmic
-    exec('wmic printer get name', { timeout: 5000 }, (error, stdout) => {
-      if (error) {
-        return res.json([{ name: 'default', description: 'Default printer (system)' }]);
-      }
-      const names = stdout.split('\n')
-        .filter(line => line.trim() && !line.includes('Name'))
-        .map(line => line.trim())
-        .filter(Boolean);
-      const list = names.map(name => ({ name, description: name }));
-      list.unshift({ name: 'default', description: 'Default printer (system)' });
-      res.json(list);
-    });
-  } else {
-    // Linux/Mac: gunakan lpstat
-    exec('lpstat -p 2>/dev/null | awk \'{print $2}\'', { timeout: 5000 }, (error, stdout) => {
-      if (error || !stdout.trim()) {
-        return res.json([{ name: 'default', description: 'Default printer (system) - CUPS not found' }]);
-      }
-      const names = stdout.split('\n')
-        .map(line => line.trim())
-        .filter(Boolean);
-      const list = names.map(name => ({ name, description: name }));
-      list.unshift({ name: 'default', description: 'Default printer (system)' });
-      res.json(list);
-    });
-  }
+  // Coba lpstat untuk Linux
+  exec('lpstat -p 2>/dev/null | awk \'{print $2}\'', { timeout: 5000 }, (error, stdout) => {
+    if (error || !stdout.trim()) {
+      // Fallback: return default only
+      return res.json([{ name: 'default', description: 'Default printer (save to file)' }]);
+    }
+    const names = stdout.split('\n')
+      .map(line => line.trim())
+      .filter(Boolean);
+    const list = names.map(name => ({ name, description: name }));
+    list.unshift({ name: 'default', description: 'Default printer (save to file)' });
+    res.json(list);
+  });
 });
 
 app.post('/api/print-temp', express.json({ limit: '50mb' }), async (req, res) => {
   const { imageData, printerName } = req.body;
-  
-  if (!imageData) {
-    return res.status(400).json({ error: 'No image data' });
-  }
+  if (!imageData) return res.status(400).json({ error: 'No image data' });
 
   try {
     const matches = imageData.match(/^data:image\/(png|jpeg|jpg);base64,(.+)$/);
-    if (!matches) {
-      return res.status(400).json({ error: 'Invalid image format' });
-    }
-    
+    if (!matches) return res.status(400).json({ error: 'Invalid image format' });
     const base64Data = matches[2];
     const imageBuffer = Buffer.from(base64Data, 'base64');
 
@@ -365,59 +331,48 @@ app.post('/api/print-temp', express.json({ limit: '50mb' }), async (req, res) =>
       .toBuffer();
 
     const filename = `print_${uuidv4()}.png`;
-    const printPath = path.join(__dirname, 'public', 'print', filename);
+    const printDir = path.join(__dirname, 'public', 'print');
     
-    // Pastikan folder print ada
-    if (!fs.existsSync(path.dirname(printPath))) {
-      fs.mkdirSync(path.dirname(printPath), { recursive: true });
+    // Pastikan folder ada
+    if (!fs.existsSync(printDir)) {
+      fs.mkdirSync(printDir, { recursive: true });
     }
     
+    const printPath = path.join(printDir, filename);
     fs.writeFileSync(printPath, processedBuffer);
 
-    const platform = os.platform();
     const printName = printerName && printerName !== 'default' ? printerName : '';
-    let cmd;
+    
+    // Simpan juga sebagai backup dengan nama yang lebih jelas
+    const savedFilename = `saved_${Date.now()}.png`;
+    const savedPath = path.join(printDir, savedFilename);
+    fs.copyFileSync(printPath, savedPath);
 
-    if (platform === 'win32') {
-      // Windows: PowerShell
-      const ps1Path = path.join(__dirname, 'print.ps1');
-      if (!fs.existsSync(ps1Path)) {
-        return res.status(500).json({ error: 'print.ps1 not found' });
-      }
-      cmd = `powershell -ExecutionPolicy Bypass -File "${ps1Path}" -imagePath "${printPath}" -printerName "${printName}"`;
+    // Coba print menggunakan lp (Linux) atau simpan saja
+    let cmd;
+    if (printName) {
+      cmd = `lp -d "${printName}" "${printPath}" 2>&1`;
     } else {
-      // Linux/Mac: CUPS atau simpan saja filenya
-      if (printName) {
-        cmd = `lp -d "${printName}" "${printPath}" 2>/dev/null || echo "CUPS_PRINT_FAILED"`;
-      } else {
-        cmd = `lp "${printPath}" 2>/dev/null || echo "CUPS_PRINT_FAILED"`;
-      }
+      cmd = `lp "${printPath}" 2>&1`;
     }
 
-    exec(cmd, { timeout: 30000 }, (error, stdout, stderr) => {
-      // Simpan file untuk backup
-      const backupPath = path.join(__dirname, 'public', 'print', `saved_${filename}`);
-      try {
-        fs.copyFileSync(printPath, backupPath);
-      } catch (e) {
-        console.error('Failed to save backup:', e);
-      }
-      
-      // Hapus file temporary
+    exec(cmd, { timeout: 15000 }, (error, stdout, stderr) => {
+      // Hapus file temporary (tapi simpan backup)
       try { fs.unlinkSync(printPath); } catch (e) {}
       
-      if (error || (stdout && stdout.includes('CUPS_PRINT_FAILED'))) {
-        console.error('Print error:', error || 'CUPS not available');
-        // Return success tapi dengan warning
+      if (error) {
+        console.log('Print command failed (expected on systems without printer):', error.message);
+        // Return success dengan info bahwa file disimpan
         return res.json({ 
           success: true, 
-          warning: 'Print command not available on this system. File has been saved.',
-          filename: `saved_${filename}`,
+          message: 'Print command not available. File saved instead.',
+          savedFile: savedFilename,
           method: 'file_saved'
         });
       }
       
-      res.json({ success: true, method: platform === 'win32' ? 'powershell' : 'cups' });
+      console.log('Print stdout:', stdout);
+      res.json({ success: true, method: 'cups_print' });
     });
 
   } catch (err) {
@@ -431,13 +386,14 @@ app.delete('/api/print-temp', (req, res) => {
   try {
     if (fs.existsSync(dir)) {
       const files = fs.readdirSync(dir);
-      // Hanya hapus file temporary, jangan hapus file saved
+      // Hanya hapus file print_ (temporary), jangan hapus saved_
       files.forEach(file => {
-        if (!file.startsWith('saved_')) {
+        if (file.startsWith('print_')) {
           fs.unlinkSync(path.join(dir, file));
         }
       });
-      res.json({ success: true, deleted: files.filter(f => !f.startsWith('saved_')).length });
+      const deletedCount = files.filter(f => f.startsWith('print_')).length;
+      res.json({ success: true, deleted: deletedCount });
     } else {
       res.json({ success: true, deleted: 0 });
     }
