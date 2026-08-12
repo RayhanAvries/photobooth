@@ -12,6 +12,39 @@ const app = express();
 const PORT = 3000;
 const PLATFORM = os.platform();
 
+// Auto-create print.sh for Linux
+if (PLATFORM === 'linux' || PLATFORM === 'darwin') {
+  const printShPath = path.join(__dirname, 'print.sh');
+  if (!fs.existsSync(printShPath)) {
+    const printShContent = `#!/bin/bash
+# Auto-generated printer script for Linux
+imagePath="$1"
+printerName="$2"
+
+if [ -z "$imagePath" ] || [ ! -f "$imagePath" ]; then
+    echo "❌ Error: Image not found"
+    exit 1
+fi
+
+if [ -n "$printerName" ] && [ "$printerName" != "default" ]; then
+    lp -d "$printerName" -o fit-to-page -o scaling=100 "$imagePath" 2>&1
+else
+    lp -o fit-to-page -o scaling=100 "$imagePath" 2>&1
+fi
+
+if [ $? -eq 0 ]; then
+    echo "✅ Print success"
+    exit 0
+else
+    echo "❌ Print failed"
+    exit 1
+fi`;
+    fs.writeFileSync(printShPath, printShContent);
+    fs.chmodSync(printShPath, '755');
+    console.log('✅ print.sh auto-created with execute permission');
+  }
+}
+
 const db = new Database('foto-booth.db');
 db.pragma('journal_mode = WAL');
 
@@ -58,40 +91,53 @@ db.exec(`
 `);
 
 const tableInfo = db.prepare("PRAGMA table_info(frames)").all();
-const hasActiveColumn = tableInfo.some(col => col.name === 'active');
-if (!hasActiveColumn) {
+if (!tableInfo.some(col => col.name === 'active')) {
   db.exec("ALTER TABLE frames ADD COLUMN active INTEGER DEFAULT 1");
 }
 
 const soundsTableInfo = db.prepare("PRAGMA table_info(sounds)").all();
-const hasCategoryColumn = soundsTableInfo.some(col => col.name === 'category');
-if (!hasCategoryColumn) {
+if (!soundsTableInfo.some(col => col.name === 'category')) {
   db.exec("ALTER TABLE sounds ADD COLUMN category TEXT NOT NULL DEFAULT 'general'");
 }
 
+// Middleware
 app.use(express.json({ limit: '50mb' }));
-app.use(express.static('public'));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// Static files - IMPORTANT: ini harus sebelum routes
+app.use('/photos', express.static(path.join(__dirname, 'public', 'photos')));
+app.use('/frames', express.static(path.join(__dirname, 'public', 'frames')));
+app.use('/sounds', express.static(path.join(__dirname, 'public', 'sounds')));
+app.use('/music', express.static(path.join(__dirname, 'public', 'music')));
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Create directories
 ['public/frames', 'public/photos', 'public/print', 'public/sounds', 'public/music', 'uploads'].forEach(dir => {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const fullPath = path.join(__dirname, dir);
+  if (!fs.existsSync(fullPath)) fs.mkdirSync(fullPath, { recursive: true });
 });
 
 const storage = multer.diskStorage({
-  destination: 'uploads/',
+  destination: (req, file, cb) => cb(null, path.join(__dirname, 'uploads')),
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
     cb(null, uuidv4() + ext);
   }
 });
+
 const upload = multer({
   storage,
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('audio/')) cb(null, true);
-    else cb(new Error('Only image and audio files are allowed'), false);
+    if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('audio/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image and audio files are allowed'), false);
+    }
   },
   limits: { fileSize: 50 * 1024 * 1024 }
 });
 
+// ==================== SOUNDS API ====================
 app.get('/api/sounds', (req, res) => {
   const sounds = db.prepare('SELECT * FROM sounds ORDER BY category, created_at DESC').all();
   res.json(sounds);
@@ -102,7 +148,7 @@ app.post('/api/sounds', upload.single('sound'), (req, res) => {
   const name = req.body.name || 'Untitled';
   const category = req.body.category || 'general';
   const filename = req.file.filename;
-  const destPath = path.join('public/sounds', filename);
+  const destPath = path.join(__dirname, 'public', 'sounds', filename);
   fs.renameSync(req.file.path, destPath);
   const info = db.prepare('INSERT INTO sounds (name, filename, category) VALUES (?, ?, ?)').run(name, filename, category);
   res.status(201).json({ id: info.lastInsertRowid, name, filename, category });
@@ -111,7 +157,7 @@ app.post('/api/sounds', upload.single('sound'), (req, res) => {
 app.delete('/api/sounds/:id', (req, res) => {
   const sound = db.prepare('SELECT * FROM sounds WHERE id = ?').get(req.params.id);
   if (!sound) return res.status(404).json({ error: 'Sound not found' });
-  const filePath = path.join('public/sounds', sound.filename);
+  const filePath = path.join(__dirname, 'public', 'sounds', sound.filename);
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   db.prepare('DELETE FROM sounds WHERE id = ?').run(req.params.id);
   res.json({ success: true });
@@ -124,16 +170,16 @@ app.get('/api/sound-settings', (req, res) => {
   res.json(soundSettings);
 });
 
+// ==================== BACKGROUND MUSIC API ====================
 app.post('/api/background-music', upload.single('music'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Audio file required' });
-  
   const filename = req.file.filename;
-  const destPath = path.join('public/music', filename);
+  const destPath = path.join(__dirname, 'public', 'music', filename);
   fs.renameSync(req.file.path, destPath);
 
   const oldRow = db.prepare("SELECT value FROM settings WHERE key = 'background_music'").get();
   if (oldRow && oldRow.value) {
-    const oldPath = path.join('public/music', oldRow.value);
+    const oldPath = path.join(__dirname, 'public', 'music', oldRow.value);
     if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
   }
 
@@ -144,7 +190,7 @@ app.post('/api/background-music', upload.single('music'), (req, res) => {
 app.delete('/api/background-music', (req, res) => {
   const row = db.prepare("SELECT value FROM settings WHERE key = 'background_music'").get();
   if (row && row.value) {
-    const filePath = path.join('public/music', row.value);
+    const filePath = path.join(__dirname, 'public', 'music', row.value);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     db.prepare("DELETE FROM settings WHERE key = 'background_music'").run();
     res.json({ success: true });
@@ -153,6 +199,7 @@ app.delete('/api/background-music', (req, res) => {
   }
 });
 
+// ==================== FRAMES API ====================
 app.get('/api/frames', (req, res) => {
   const frames = db.prepare('SELECT * FROM frames ORDER BY created_at DESC').all();
   res.json(frames);
@@ -162,7 +209,7 @@ app.post('/api/frames', upload.single('frame'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Image file required' });
   const name = req.body.name || 'Untitled';
   const filename = req.file.filename;
-  const destPath = path.join('public/frames', filename);
+  const destPath = path.join(__dirname, 'public', 'frames', filename);
   fs.renameSync(req.file.path, destPath);
   const info = db.prepare('INSERT INTO frames (name, filename, active) VALUES (?, ?, 1)').run(name, filename);
   res.status(201).json({ id: info.lastInsertRowid, name, filename, active: 1 });
@@ -180,13 +227,14 @@ app.patch('/api/frames/:id/active', (req, res) => {
 app.delete('/api/frames/:id', (req, res) => {
   const frame = db.prepare('SELECT * FROM frames WHERE id = ?').get(req.params.id);
   if (!frame) return res.status(404).json({ error: 'Frame not found' });
-  const filePath = path.join('public/frames', frame.filename);
+  const filePath = path.join(__dirname, 'public', 'frames', frame.filename);
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   db.prepare('DELETE FROM frames WHERE id = ?').run(req.params.id);
   res.json({ success: true });
 });
 
-app.post('/api/photos', express.json({ limit: '50mb' }), (req, res) => {
+// ==================== PHOTOS API ====================
+app.post('/api/photos', (req, res) => {
   const { image, frame_id } = req.body;
   if (!image) return res.status(400).json({ error: 'Image data missing' });
   const matches = image.match(/^data:image\/(png|jpeg|jpg);base64,(.+)$/);
@@ -194,7 +242,7 @@ app.post('/api/photos', express.json({ limit: '50mb' }), (req, res) => {
   const ext = matches[1] === 'jpeg' ? 'jpg' : 'png';
   const base64Data = matches[2];
   const filename = uuidv4() + '.' + ext;
-  const filePath = path.join('public/photos', filename);
+  const filePath = path.join(__dirname, 'public', 'photos', filename);
   fs.writeFileSync(filePath, base64Data, 'base64');
   const info = db.prepare('INSERT INTO photos (frame_id, filename) VALUES (?, ?)').run(frame_id || null, filename);
   res.json({ id: info.lastInsertRowid, filename, url: `/photos/${filename}` });
@@ -225,7 +273,7 @@ app.get('/api/photos', (req, res) => {
 app.delete('/api/photos/:id', (req, res) => {
   const photo = db.prepare('SELECT * FROM photos WHERE id = ?').get(req.params.id);
   if (!photo) return res.status(404).json({ error: 'Photo not found' });
-  const filePath = path.join('public/photos', photo.filename);
+  const filePath = path.join(__dirname, 'public', 'photos', photo.filename);
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   db.prepare('DELETE FROM photos WHERE id = ?').run(req.params.id);
   res.json({ success: true });
@@ -234,7 +282,7 @@ app.delete('/api/photos/:id', (req, res) => {
 app.delete('/api/photos/date/:date', (req, res) => {
   const photos = db.prepare('SELECT * FROM photos WHERE DATE(created_at) = ?').all(req.params.date);
   photos.forEach(photo => {
-    const filePath = path.join('public/photos', photo.filename);
+    const filePath = path.join(__dirname, 'public', 'photos', photo.filename);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   });
   db.prepare('DELETE FROM photos WHERE DATE(created_at) = ?').run(req.params.date);
@@ -251,22 +299,26 @@ app.get('/api/photos/dates', (req, res) => {
   res.json(dates);
 });
 
+// ==================== DOWNLOAD ROUTE (QR Code) ====================
 app.get('/download/:filename', (req, res) => {
   const filename = req.params.filename;
   const filePath = path.join(__dirname, 'public', 'photos', filename);
   
   if (!fs.existsSync(filePath)) {
-    return res.status(404).send('File not found');
+    return res.status(404).json({ error: 'File not found', path: filePath });
   }
 
-  res.sendFile(filePath, {
-    headers: {
-      'Content-Type': 'image/png',
-      'Content-Disposition': `attachment; filename="Kidversa_Studio_${filename}"`
-    }
-  });
+  const downloadFilename = `Kidversa_Studio_${filename}`;
+  
+  res.setHeader('Content-Type', 'image/png');
+  res.setHeader('Content-Disposition', `attachment; filename="${downloadFilename}"`);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  
+  const fileStream = fs.createReadStream(filePath);
+  fileStream.pipe(res);
 });
 
+// ==================== SETTINGS API ====================
 app.get('/api/settings', (req, res) => {
   const rows = db.prepare('SELECT key, value FROM settings').all();
   const settings = {};
@@ -281,36 +333,38 @@ app.post('/api/settings', (req, res) => {
   res.json({ success: true });
 });
 
+// ==================== PRINTERS API ====================
 app.get('/api/printers', (req, res) => {
   if (PLATFORM === 'win32') {
-    exec('wmic printer get name', (error, stdout) => {
+    exec('wmic printer get name', { timeout: 5000 }, (error, stdout) => {
       if (error) {
-        return res.json([{ name: 'default', description: 'Default printer (system)' }]);
+        return res.json([{ name: 'default', description: 'Default printer' }]);
       }
       const names = stdout.split('\n')
         .filter(line => line.trim() && !line.includes('Name'))
         .map(line => line.trim())
         .filter(Boolean);
       const list = names.map(name => ({ name, description: name }));
-      list.unshift({ name: 'default', description: 'Default printer (system)' });
+      list.unshift({ name: 'default', description: 'Default printer' });
       res.json(list);
     });
   } else {
-    exec('lpstat -p 2>/dev/null | awk \'{print $2}\' || echo ""', (error, stdout) => {
+    exec('lpstat -p 2>/dev/null | awk \'{print $2}\'', { timeout: 5000 }, (error, stdout) => {
       if (error || !stdout.trim()) {
-        return res.json([{ name: 'default', description: 'Default printer (system)' }]);
+        return res.json([{ name: 'default', description: 'Default printer' }]);
       }
       const names = stdout.split('\n')
         .map(line => line.trim())
         .filter(Boolean);
       const list = names.map(name => ({ name, description: name }));
-      list.unshift({ name: 'default', description: 'Default printer (system)' });
+      list.unshift({ name: 'default', description: 'Default printer' });
       res.json(list);
     });
   }
 });
 
-app.post('/api/print-temp', express.json({ limit: '50mb' }), async (req, res) => {
+// ==================== PRINT API ====================
+app.post('/api/print-temp', async (req, res) => {
   const { imageData, printerName } = req.body;
   if (!imageData) return res.status(400).json({ error: 'No image data' });
 
@@ -342,9 +396,10 @@ app.post('/api/print-temp', express.json({ limit: '50mb' }), async (req, res) =>
       const ps1Path = path.join(__dirname, 'print.ps1');
       if (!fs.existsSync(ps1Path)) {
         try { fs.unlinkSync(printPath); } catch (e) {}
-        return res.status(500).json({ error: 'print.ps1 not found' });
+        return res.status(500).json({ error: 'print.ps1 not found on server' });
       }
       const cmd = `powershell -ExecutionPolicy Bypass -File "${ps1Path}" -imagePath "${printPath}" -printerName "${printName}"`;
+      
       exec(cmd, { timeout: 30000 }, (error, stdout, stderr) => {
         try { fs.unlinkSync(printPath); } catch (e) {}
         if (error) {
@@ -353,23 +408,22 @@ app.post('/api/print-temp', express.json({ limit: '50mb' }), async (req, res) =>
         res.json({ success: true, method: 'powershell', platform: 'win32' });
       });
     } else {
-      const shPath = path.join(__dirname, 'print.sh');
-      if (!fs.existsSync(shPath)) {
-        try { fs.unlinkSync(printPath); } catch (e) {}
-        return res.status(500).json({ error: 'print.sh not found' });
+      // Linux/Mac - gunakan lp command langsung
+      let cmd;
+      if (printName) {
+        cmd = `lp -d "${printName}" -o fit-to-page -o scaling=100 "${printPath}"`;
+      } else {
+        cmd = `lp -o fit-to-page -o scaling=100 "${printPath}"`;
       }
-      const cmd = `bash "${shPath}" "${printPath}" "${printName}"`;
+      
       exec(cmd, { timeout: 30000 }, (error, stdout, stderr) => {
         try { fs.unlinkSync(printPath); } catch (e) {}
         if (error) {
-          const errorMsg = stderr || error.message;
-          return res.status(500).json({ error: 'Print failed: ' + errorMsg });
+          return res.status(500).json({ error: 'Print failed: ' + (stderr || error.message) });
         }
-        console.log('Print output:', stdout);
-        res.json({ success: true, method: 'bash_cups', platform: PLATFORM });
+        res.json({ success: true, method: 'cups', platform: PLATFORM });
       });
     }
-
   } catch (err) {
     res.status(500).json({ error: 'Processing failed: ' + err.message });
   }
@@ -380,7 +434,9 @@ app.delete('/api/print-temp', (req, res) => {
   try {
     if (fs.existsSync(dir)) {
       const files = fs.readdirSync(dir);
-      files.forEach(file => fs.unlinkSync(path.join(dir, file)));
+      files.forEach(file => {
+        try { fs.unlinkSync(path.join(dir, file)); } catch (e) {}
+      });
       res.json({ success: true, deleted: files.length });
     } else {
       res.json({ success: true, deleted: 0 });
@@ -390,6 +446,7 @@ app.delete('/api/print-temp', (req, res) => {
   }
 });
 
+// ==================== ERROR HANDLER ====================
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'File too large (max 50MB)' });
@@ -399,8 +456,14 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || 'Server error' });
 });
 
+// ==================== HTML ROUTES ====================
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/booth', (req, res) => res.sendFile(path.join(__dirname, 'public', 'booth.html')));
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 
-app.listen(PORT, '0.0.0.0', () => console.log(`Server running at http://0.0.0.0:${PORT} [Platform: ${PLATFORM}]`));
+// ==================== START SERVER ====================
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running at http://0.0.0.0:${PORT}`);
+  console.log(`📋 Platform: ${PLATFORM}`);
+  console.log(`📁 Public folder: ${path.join(__dirname, 'public')}`);
+});
