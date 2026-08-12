@@ -6,9 +6,11 @@ const { v4: uuidv4 } = require('uuid');
 const Database = require('better-sqlite3');
 const sharp = require('sharp');
 const { exec } = require('child_process');
+const os = require('os');
 
 const app = express();
 const PORT = 3000;
+const PLATFORM = os.platform();
 
 const db = new Database('foto-booth.db');
 db.pragma('journal_mode = WAL');
@@ -280,12 +282,8 @@ app.post('/api/settings', (req, res) => {
 });
 
 app.get('/api/printers', (req, res) => {
-  const os = require('os');
-  const platform = os.platform();
-  
-  if (platform === 'win32') {
-    const cmd = 'wmic printer get name';
-    exec(cmd, (error, stdout) => {
+  if (PLATFORM === 'win32') {
+    exec('wmic printer get name', (error, stdout) => {
       if (error) {
         return res.json([{ name: 'default', description: 'Default printer (system)' }]);
       }
@@ -297,9 +295,9 @@ app.get('/api/printers', (req, res) => {
       list.unshift({ name: 'default', description: 'Default printer (system)' });
       res.json(list);
     });
-  } else if (platform === 'linux') {
-    exec('lpstat -p | awk \'{print $2}\'', (error, stdout) => {
-      if (error) {
+  } else {
+    exec('lpstat -p 2>/dev/null | awk \'{print $2}\' || echo ""', (error, stdout) => {
+      if (error || !stdout.trim()) {
         return res.json([{ name: 'default', description: 'Default printer (system)' }]);
       }
       const names = stdout.split('\n')
@@ -309,8 +307,6 @@ app.get('/api/printers', (req, res) => {
       list.unshift({ name: 'default', description: 'Default printer (system)' });
       res.json(list);
     });
-  } else {
-    res.json([{ name: 'default', description: 'Default printer (system)' }]);
   }
 });
 
@@ -340,47 +336,38 @@ app.post('/api/print-temp', express.json({ limit: '50mb' }), async (req, res) =>
     const printPath = path.join(__dirname, 'public', 'print', filename);
     fs.writeFileSync(printPath, processedBuffer);
 
-    const os = require('os');
-    const platform = os.platform();
+    const printName = printerName && printerName !== 'default' ? printerName : '';
 
-    if (platform === 'win32') {
-      const printName = printerName && printerName !== 'default' ? printerName : '';
+    if (PLATFORM === 'win32') {
       const ps1Path = path.join(__dirname, 'print.ps1');
-
       if (!fs.existsSync(ps1Path)) {
         try { fs.unlinkSync(printPath); } catch (e) {}
         return res.status(500).json({ error: 'print.ps1 not found' });
       }
-
       const cmd = `powershell -ExecutionPolicy Bypass -File "${ps1Path}" -imagePath "${printPath}" -printerName "${printName}"`;
-
       exec(cmd, { timeout: 30000 }, (error, stdout, stderr) => {
         try { fs.unlinkSync(printPath); } catch (e) {}
         if (error) {
           return res.status(500).json({ error: 'Print failed: ' + (stderr || error.message) });
         }
-        res.json({ success: true, method: 'powershell_temp' });
-      });
-    } else if (platform === 'linux') {
-      const printName = printerName && printerName !== 'default' ? printerName : '';
-      
-      let cmd;
-      if (printName) {
-        cmd = `lp -d "${printName}" -o media=Custom.72x150mm -o fit-to-page "${printPath}"`;
-      } else {
-        cmd = `lp -o media=Custom.72x150mm -o fit-to-page "${printPath}"`;
-      }
-
-      exec(cmd, { timeout: 30000 }, (error, stdout, stderr) => {
-        try { fs.unlinkSync(printPath); } catch (e) {}
-        if (error) {
-          return res.status(500).json({ error: 'Print failed: ' + (stderr || error.message) });
-        }
-        res.json({ success: true, method: 'cups_temp' });
+        res.json({ success: true, method: 'powershell', platform: 'win32' });
       });
     } else {
-      try { fs.unlinkSync(printPath); } catch (e) {}
-      res.status(500).json({ error: 'Unsupported platform: ' + platform });
+      const shPath = path.join(__dirname, 'print.sh');
+      if (!fs.existsSync(shPath)) {
+        try { fs.unlinkSync(printPath); } catch (e) {}
+        return res.status(500).json({ error: 'print.sh not found' });
+      }
+      const cmd = `bash "${shPath}" "${printPath}" "${printName}"`;
+      exec(cmd, { timeout: 30000 }, (error, stdout, stderr) => {
+        try { fs.unlinkSync(printPath); } catch (e) {}
+        if (error) {
+          const errorMsg = stderr || error.message;
+          return res.status(500).json({ error: 'Print failed: ' + errorMsg });
+        }
+        console.log('Print output:', stdout);
+        res.json({ success: true, method: 'bash_cups', platform: PLATFORM });
+      });
     }
 
   } catch (err) {
@@ -391,9 +378,13 @@ app.post('/api/print-temp', express.json({ limit: '50mb' }), async (req, res) =>
 app.delete('/api/print-temp', (req, res) => {
   const dir = path.join(__dirname, 'public', 'print');
   try {
-    const files = fs.readdirSync(dir);
-    files.forEach(file => fs.unlinkSync(path.join(dir, file)));
-    res.json({ success: true, deleted: files.length });
+    if (fs.existsSync(dir)) {
+      const files = fs.readdirSync(dir);
+      files.forEach(file => fs.unlinkSync(path.join(dir, file)));
+      res.json({ success: true, deleted: files.length });
+    } else {
+      res.json({ success: true, deleted: 0 });
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -412,4 +403,4 @@ app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.ht
 app.get('/booth', (req, res) => res.sendFile(path.join(__dirname, 'public', 'booth.html')));
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 
-app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`Server running at http://0.0.0.0:${PORT} [Platform: ${PLATFORM}]`));
