@@ -10,7 +10,6 @@
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
-    /* ... semua style sama seperti sebelumnya ... */
     :root {
       --purple: #5c2e8a;
       --purple-dark: #4a2372;
@@ -173,7 +172,6 @@
       <button class="tab-btn" onclick="switchTab('settings')">Settings</button>
     </div>
 
-    <!-- FRAMES TAB -->
     <div class="tab-content active" id="tab-frames">
       <div class="card">
         <h3>Upload New Frame</h3>
@@ -189,7 +187,6 @@
       <div class="frame-grid" id="frameGrid"></div>
     </div>
 
-    <!-- PHOTOS TAB -->
     <div class="tab-content" id="tab-photos">
       <div class="photo-controls">
         <select id="dateSelect" onchange="loadPhotos()"></select>
@@ -200,7 +197,6 @@
       <div class="empty" id="emptyMsg">No photos found for this date.</div>
     </div>
 
-    <!-- SOUNDS TAB -->
     <div class="tab-content" id="tab-sounds">
       <div class="card">
         <h3>Upload Sound Effect (MP3)</h3>
@@ -234,7 +230,6 @@
       </div>
     </div>
 
-    <!-- SETTINGS TAB -->
     <div class="tab-content" id="tab-settings">
       <div class="card">
         <h3>Booth Settings</h3>
@@ -275,6 +270,19 @@
           <span class="save-indicator" id="saveMirrorIndicator">Saved!</span>
         </div>
         <div class="camera-preview"><video id="adminVideo" autoplay playsinline muted></video></div>
+
+        <hr class="settings-divider">
+
+        <h4>Hand Detection</h4>
+        <div class="setting-row">
+          <label for="handDetectionToggle">Auto capture with 5 fingers:</label>
+          <label class="switch-compact">
+            <input type="checkbox" id="handDetectionToggle" onchange="handleHandDetectionToggle(this.checked)">
+            <span class="slider"></span>
+            <span class="label-text"><span class="off">Off</span><span class="on">On</span></span>
+          </label>
+          <span class="save-indicator" id="saveHandDetectionIndicator">Saved!</span>
+        </div>
 
         <hr class="settings-divider">
 
@@ -360,6 +368,10 @@
       await saveSetting('mirror_camera', checked ? 'true' : 'false');
     }
 
+    async function handleHandDetectionToggle(checked) {
+      await saveSetting('hand_detection', checked ? 'true' : 'false');
+    }
+
     function switchTab(tab) {
       if (currentTab === 'settings' && tab !== 'settings') stopAdminCamera();
       currentTab = tab;
@@ -373,7 +385,6 @@
       if (tab === 'settings') { loadSettings(); loadPrinters(); loadBackgroundMusicStatus(); startAdminCamera().then(() => { const mt = document.getElementById('mirrorToggle'); if (mt) applyMirrorToPreview(mt.checked); }); }
     }
 
-    // FRAMES
     const form = document.getElementById('uploadForm'), frameGrid = document.getElementById('frameGrid'), errorMsg = document.getElementById('errorMsg');
 
     async function loadFrames() {
@@ -409,7 +420,6 @@
 
     async function deleteFrame(id) { if (!confirm('Delete this frame?')) return; await fetch(`/api/frames/${id}`, { method: 'DELETE' }); loadFrames(); }
 
-    // PHOTOS
     const dateSelect = document.getElementById('dateSelect'), photoGrid = document.getElementById('photoGrid'), emptyMsg = document.getElementById('emptyMsg');
 
     async function loadDates() {
@@ -473,11 +483,12 @@
       alert(`Deleted ${data.deleted} photos.`); loadDates(); loadPhotos();
     }
 
-    // QR MODAL
     let qrCodeInstance = null;
     function openQRModal(photoUrl, filename) {
       const modal = document.getElementById('qrModal'), container = document.getElementById('qrModalContainer'), urlDisplay = document.getElementById('qrModalUrl'), photoPreview = document.getElementById('qrModalPhoto'), downloadLink = document.getElementById('qrDownloadLink');
-      const fullUrl = window.location.origin + photoUrl; currentQRPhotoUrl = fullUrl;
+      const filenameOnly = photoUrl.split('/').pop();
+      const fullUrl = window.location.origin + '/download/' + filenameOnly;
+      currentQRPhotoUrl = fullUrl;
       urlDisplay.textContent = fullUrl; photoPreview.src = photoUrl; container.innerHTML = '';
       qrCodeInstance = new QRCode(container, { text: fullUrl, width: 200, height: 200, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.H });
       setTimeout(() => { const canvas = container.querySelector('canvas'); if (canvas) downloadLink.href = canvas.toDataURL('image/png'); }, 300);
@@ -492,7 +503,6 @@
       }
     }
 
-    // ===== SOUNDS =====
     async function loadSounds() {
       try {
         const res = await fetch('/api/sounds'); const sounds = await res.json();
@@ -550,7 +560,6 @@
       });
     }
 
-    // ===== BACKGROUND MUSIC (Home Page) =====
     async function loadBackgroundMusicStatus() {
       try {
         const res = await fetch('/api/settings');
@@ -582,7 +591,6 @@
       } catch (err) { showToast('Error: ' + err.message, 'error'); }
     }
 
-    // Handle upload form background music
     document.getElementById('bgMusicForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const errorEl = document.getElementById('bgMusicError');
@@ -603,19 +611,19 @@
       }
     });
 
-    // SETTINGS
     async function loadSettings() {
       try {
         const res = await fetch('/api/settings'); const settings = await res.json();
         document.getElementById('langSelect').value = settings.language || 'en';
         document.getElementById('countdownSelect').value = settings.countdown_seconds || '5';
         const mirrorToggle = document.getElementById('mirrorToggle'); mirrorToggle.checked = settings.mirror_camera !== 'false'; applyMirrorToPreview(mirrorToggle.checked);
+        const handDetectionToggle = document.getElementById('handDetectionToggle'); handDetectionToggle.checked = settings.hand_detection !== 'false';
         if (settings.printer) document.getElementById('printerSelect').value = settings.printer;
       } catch (e) { console.error(e); }
     }
 
     async function saveSetting(key, value) {
-      const indicatorMap = { 'language': 'saveLangIndicator', 'countdown_seconds': 'saveCountdownIndicator', 'printer': 'savePrinterIndicator', 'mirror_camera': 'saveMirrorIndicator' };
+      const indicatorMap = { 'language': 'saveLangIndicator', 'countdown_seconds': 'saveCountdownIndicator', 'printer': 'savePrinterIndicator', 'mirror_camera': 'saveMirrorIndicator', 'hand_detection': 'saveHandDetectionIndicator' };
       const indicator = document.getElementById(indicatorMap[key]);
       try {
         await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key, value }) });

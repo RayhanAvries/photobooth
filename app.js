@@ -6,21 +6,10 @@ const { v4: uuidv4 } = require('uuid');
 const Database = require('better-sqlite3');
 const sharp = require('sharp');
 const { exec } = require('child_process');
-const cors = require('cors');
-const http = require('http');
-const https = require('https');
-const selfsigned = require('selfsigned');
 
 const app = express();
-const HTTP_PORT = 3000;
-const HTTPS_PORT = 3443;
+const PORT = 3000;
 
-// ---------- Middleware ----------
-app.use(cors({ origin: '*' }));
-app.use(express.json({ limit: '20mb' }));
-app.use(express.static('public'));
-
-// ---------- Database ----------
 const db = new Database('foto-booth.db');
 db.pragma('journal_mode = WAL');
 
@@ -54,6 +43,7 @@ db.exec(`
   INSERT OR IGNORE INTO settings (key, value) VALUES ('countdown_seconds', '5');
   INSERT OR IGNORE INTO settings (key, value) VALUES ('printer', 'default');
   INSERT OR IGNORE INTO settings (key, value) VALUES ('mirror_camera', 'true');
+  INSERT OR IGNORE INTO settings (key, value) VALUES ('hand_detection', 'true');
   INSERT OR IGNORE INTO settings (key, value) VALUES ('sound_capture_id', '');
   INSERT OR IGNORE INTO settings (key, value) VALUES ('sound_retake_id', '');
   INSERT OR IGNORE INTO settings (key, value) VALUES ('sound_print_id', '');
@@ -65,22 +55,31 @@ db.exec(`
   INSERT OR IGNORE INTO settings (key, value) VALUES ('background_music', '');
 `);
 
-// Cek kolom active di frames
 const tableInfo = db.prepare("PRAGMA table_info(frames)").all();
 const hasActiveColumn = tableInfo.some(col => col.name === 'active');
 if (!hasActiveColumn) {
-  console.log('Menambahkan kolom active ke tabel frames...');
   db.exec("ALTER TABLE frames ADD COLUMN active INTEGER DEFAULT 1");
 }
 
 const soundsTableInfo = db.prepare("PRAGMA table_info(sounds)").all();
 const hasCategoryColumn = soundsTableInfo.some(col => col.name === 'category');
 if (!hasCategoryColumn) {
-  console.log('Menambahkan kolom category ke tabel sounds...');
   db.exec("ALTER TABLE sounds ADD COLUMN category TEXT NOT NULL DEFAULT 'general'");
 }
 
-// Buat folder yang diperlukan
+app.use(express.json({ limit: '50mb' }));
+app.use(express.static('public'));
+
+// Serve favicon.ico dari folder public jika ada
+app.get('/favicon.ico', (req, res) => {
+  const faviconPath = path.join(__dirname, 'public', 'favicon.ico');
+  if (fs.existsSync(faviconPath)) {
+    res.sendFile(faviconPath);
+  } else {
+    res.status(204).end(); // No content, tidak menampilkan error
+  }
+});
+
 ['public/frames', 'public/photos', 'public/print', 'public/sounds', 'public/music', 'uploads'].forEach(dir => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
@@ -98,11 +97,9 @@ const upload = multer({
     if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('audio/')) cb(null, true);
     else cb(new Error('Only image and audio files are allowed'), false);
   },
-  limits: { fileSize: 10 * 1024 * 1024 }
+  limits: { fileSize: 50 * 1024 * 1024 }
 });
 
-// ==================== API Endpoints ====================
-// SOUNDS
 app.get('/api/sounds', (req, res) => {
   const sounds = db.prepare('SELECT * FROM sounds ORDER BY category, created_at DESC').all();
   res.json(sounds);
@@ -135,17 +132,19 @@ app.get('/api/sound-settings', (req, res) => {
   res.json(soundSettings);
 });
 
-// BACKGROUND MUSIC
 app.post('/api/background-music', upload.single('music'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Audio file required' });
+  
   const filename = req.file.filename;
   const destPath = path.join('public/music', filename);
   fs.renameSync(req.file.path, destPath);
+
   const oldRow = db.prepare("SELECT value FROM settings WHERE key = 'background_music'").get();
   if (oldRow && oldRow.value) {
     const oldPath = path.join('public/music', oldRow.value);
     if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
   }
+
   db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run('background_music', filename);
   res.json({ success: true, filename });
 });
@@ -162,7 +161,6 @@ app.delete('/api/background-music', (req, res) => {
   }
 });
 
-// FRAMES
 app.get('/api/frames', (req, res) => {
   const frames = db.prepare('SELECT * FROM frames ORDER BY created_at DESC').all();
   res.json(frames);
@@ -196,8 +194,7 @@ app.delete('/api/frames/:id', (req, res) => {
   res.json({ success: true });
 });
 
-// PHOTOS
-app.post('/api/photos', express.json({ limit: '20mb' }), (req, res) => {
+app.post('/api/photos', express.json({ limit: '50mb' }), (req, res) => {
   const { image, frame_id } = req.body;
   if (!image) return res.status(400).json({ error: 'Image data missing' });
   const matches = image.match(/^data:image\/(png|jpeg|jpg);base64,(.+)$/);
@@ -262,7 +259,22 @@ app.get('/api/photos/dates', (req, res) => {
   res.json(dates);
 });
 
-// SETTINGS
+app.get('/download/:filename', (req, res) => {
+  const filename = req.params.filename;
+  const filePath = path.join(__dirname, 'public', 'photos', filename);
+  
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).send('File not found');
+  }
+
+  res.sendFile(filePath, {
+    headers: {
+      'Content-Type': 'image/png',
+      'Content-Disposition': `attachment; filename="Kidversa_Studio_${filename}"`
+    }
+  });
+});
+
 app.get('/api/settings', (req, res) => {
   const rows = db.prepare('SELECT key, value FROM settings').all();
   const settings = {};
@@ -277,12 +289,26 @@ app.post('/api/settings', (req, res) => {
   res.json({ success: true });
 });
 
-// PRINTER
 app.get('/api/printers', (req, res) => {
+  // Coba wmic dulu, kalau gagal coba PowerShell
   const cmd = 'wmic printer get name';
-  exec(cmd, (error, stdout) => {
+  exec(cmd, { timeout: 5000 }, (error, stdout) => {
     if (error) {
-      return res.json([{ name: 'default', description: 'Default printer (system)' }]);
+      // Fallback ke PowerShell
+      const psCmd = 'powershell -Command "Get-Printer | Select-Object -ExpandProperty Name"';
+      exec(psCmd, { timeout: 5000 }, (psError, psStdout) => {
+        if (psError) {
+          console.error('Printer detection error:', psError);
+          return res.json([{ name: 'default', description: 'Default printer (system)' }]);
+        }
+        const names = psStdout.split('\n')
+          .map(line => line.trim())
+          .filter(Boolean);
+        const list = names.map(name => ({ name, description: name }));
+        list.unshift({ name: 'default', description: 'Default printer (system)' });
+        res.json(list);
+      });
+      return;
     }
     const names = stdout.split('\n')
       .filter(line => line.trim() && !line.includes('Name'))
@@ -294,21 +320,34 @@ app.get('/api/printers', (req, res) => {
   });
 });
 
-app.post('/api/print-temp', express.json({ limit: '20mb' }), async (req, res) => {
+app.post('/api/print-temp', express.json({ limit: '50mb' }), async (req, res) => {
+  console.log('Print request received');
   const { imageData, printerName } = req.body;
-  if (!imageData) return res.status(400).json({ error: 'No image data' });
+  
+  if (!imageData) {
+    console.error('No image data in request');
+    return res.status(400).json({ error: 'No image data' });
+  }
 
   try {
+    console.log('Processing image data...');
     const matches = imageData.match(/^data:image\/(png|jpeg|jpg);base64,(.+)$/);
-    if (!matches) return res.status(400).json({ error: 'Invalid image format' });
+    if (!matches) {
+      console.error('Invalid image format');
+      return res.status(400).json({ error: 'Invalid image format' });
+    }
+    
     const base64Data = matches[2];
     const imageBuffer = Buffer.from(base64Data, 'base64');
+    console.log(`Image buffer size: ${imageBuffer.length} bytes`);
 
     const TARGET_WIDTH_MM = 72;
     const TARGET_HEIGHT_MM = 150;
     const DPI = 300;
     const targetWidthPx = Math.round((TARGET_WIDTH_MM / 25.4) * DPI);
     const targetHeightPx = Math.round((TARGET_HEIGHT_MM / 25.4) * DPI);
+    
+    console.log(`Resizing to ${targetWidthPx}x${targetHeightPx}px`);
 
     const processedBuffer = await sharp(imageBuffer)
       .resize(targetWidthPx, targetHeightPx, { fit: 'fill' })
@@ -318,26 +357,71 @@ app.post('/api/print-temp', express.json({ limit: '20mb' }), async (req, res) =>
 
     const filename = `print_${uuidv4()}.png`;
     const printPath = path.join(__dirname, 'public', 'print', filename);
+    
+    // Pastikan folder print ada
+    const printDir = path.dirname(printPath);
+    if (!fs.existsSync(printDir)) {
+      fs.mkdirSync(printDir, { recursive: true });
+    }
+    
     fs.writeFileSync(printPath, processedBuffer);
+    console.log(`File saved to: ${printPath}`);
 
     const printName = printerName && printerName !== 'default' ? printerName : '';
     const ps1Path = path.join(__dirname, 'print.ps1');
 
     if (!fs.existsSync(ps1Path)) {
+      console.error(`print.ps1 not found at: ${ps1Path}`);
       return res.status(500).json({ error: 'print.ps1 not found' });
     }
 
-    const cmd = `powershell -ExecutionPolicy Bypass -File "${ps1Path}" -imagePath "${printPath}" -printerName "${printName}"`;
+    console.log(`print.ps1 found at: ${ps1Path}`);
+    console.log(`Printer: "${printName}"`);
 
-    exec(cmd, { timeout: 30000 }, (error, stdout, stderr) => {
-      try { fs.unlinkSync(printPath); } catch (e) {}
-      if (error) {
-        return res.status(500).json({ error: 'Print failed: ' + (stderr || error.message) });
+    // Coba beberapa cara untuk menjalankan PowerShell
+    const commands = [
+      `powershell.exe -ExecutionPolicy Bypass -File "${ps1Path}" -imagePath "${printPath}" -printerName "${printName}"`,
+      `powershell -ExecutionPolicy Bypass -File "${ps1Path}" -imagePath "${printPath}" -printerName "${printName}"`,
+      `C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File "${ps1Path}" -imagePath "${printPath}" -printerName "${printName}"`
+    ];
+
+    // Coba command pertama, jika gagal coba yang lain
+    tryCommand(0);
+
+    function tryCommand(index) {
+      if (index >= commands.length) {
+        // Semua command gagal
+        try { fs.unlinkSync(printPath); } catch (e) {}
+        return res.status(500).json({ 
+          error: 'Print failed: PowerShell not found. Please install PowerShell or run on Windows.' 
+        });
       }
-      res.json({ success: true, method: 'powershell_temp' });
-    });
+
+      const cmd = commands[index];
+      console.log(`Trying command ${index + 1}: ${cmd}`);
+
+      exec(cmd, { timeout: 30000 }, (error, stdout, stderr) => {
+        if (error) {
+          console.error(`Command ${index + 1} failed:`, error.message);
+          // Coba command berikutnya
+          tryCommand(index + 1);
+        } else {
+          // Sukses
+          console.log(`Print success with command ${index + 1}`);
+          console.log('stdout:', stdout);
+          if (stderr) console.log('stderr:', stderr);
+          
+          try { fs.unlinkSync(printPath); } catch (e) {
+            console.error('Failed to delete temp file:', e);
+          }
+          
+          res.json({ success: true, method: 'powershell_temp', command: index + 1 });
+        }
+      });
+    }
 
   } catch (err) {
+    console.error('Processing error:', err);
     res.status(500).json({ error: 'Processing failed: ' + err.message });
   }
 });
@@ -345,9 +429,13 @@ app.post('/api/print-temp', express.json({ limit: '20mb' }), async (req, res) =>
 app.delete('/api/print-temp', (req, res) => {
   const dir = path.join(__dirname, 'public', 'print');
   try {
-    const files = fs.readdirSync(dir);
-    files.forEach(file => fs.unlinkSync(path.join(dir, file)));
-    res.json({ success: true, deleted: files.length });
+    if (fs.existsSync(dir)) {
+      const files = fs.readdirSync(dir);
+      files.forEach(file => fs.unlinkSync(path.join(dir, file)));
+      res.json({ success: true, deleted: files.length });
+    } else {
+      res.json({ success: true, deleted: 0 });
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -355,55 +443,15 @@ app.delete('/api/print-temp', (req, res) => {
 
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
-    if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'File too large (max 10MB)' });
+    if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'File too large (max 50MB)' });
     return res.status(400).json({ error: err.message });
   }
   console.error('Server error:', err);
   res.status(500).json({ error: err.message || 'Server error' });
 });
 
-// Route untuk halaman
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/booth', (req, res) => res.sendFile(path.join(__dirname, 'public', 'booth.html')));
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 
-// ==================== SERVER HTTP (port 3000) ====================
-http.createServer(app).listen(HTTP_PORT, '0.0.0.0', () => {
-  console.log(`✅ HTTP Server running at http://localhost:${HTTP_PORT}`);
-  console.log(`📡 Access from other devices using http://<your-ip>:${HTTP_PORT}`);
-  console.log(`\n⚠️  For camera access from other devices, you need HTTPS:`);
-  console.log(`   https://<your-ip>:${HTTPS_PORT} (self-signed certificate)`);
-  console.log(`   Browser will show warning - proceed anyway.\n`);
-});
-
-// ==================== SERVER HTTPS (port 3443) ====================
-// Buat sertifikat self-signed
-const attrs = [{ name: 'commonName', value: 'localhost' }];
-const altNames = [
-  'DNS:localhost',
-  'DNS:127.0.0.1',
-  'IP:127.0.0.1'
-];
-const pems = selfsigned.generate(attrs, {
-  days: 365,
-  altNames: altNames,
-  algorithm: 'sha256'
-});
-
-const httpsOptions = {
-  key: pems.private,
-  cert: pems.cert,
-  // Konfigurasi minimal untuk kompatibilitas maksimal
-  secureOptions: require('constants').SSL_OP_NO_SSLv2 |
-                  require('constants').SSL_OP_NO_SSLv3 |
-                  require('constants').SSL_OP_NO_TLSv1 |
-                  require('constants').SSL_OP_NO_TLSv1_1,
-  // Gunakan cipher default Node.js (lebih kompatibel)
-  ciphers: 'DEFAULT@SECLEVEL=1'
-};
-
-https.createServer(httpsOptions, app).listen(HTTPS_PORT, '0.0.0.0', () => {
-  console.log(`🔒 HTTPS Server running at https://localhost:${HTTPS_PORT}`);
-  console.log(`📡 Access from other devices using https://<your-ip>:${HTTPS_PORT}`);
-  console.log(`⚠️  Browser will show security warning - proceed anyway.\n`);
-});
+app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
