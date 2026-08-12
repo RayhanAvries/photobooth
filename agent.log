@@ -1,0 +1,11 @@
+[2026-08-12T17:38:23.777Z] ============================================
+[2026-08-12T17:38:23.780Z] Print Agent dimulai
+[2026-08-12T17:38:23.781Z] Server URL: http://IP_VPS_ANDA:3000
+[2026-08-12T17:38:23.781Z] Interval polling: 5000 ms
+[2026-08-12T17:38:23.781Z] ============================================
+[2026-08-12T17:38:31.071Z] Tidak dapat terhubung ke server: fetch failed
+[2026-08-12T17:38:31.072Z] Periksa kembali URL server dan koneksi internet. Agent tetap berjalan untuk mencoba ulang...
+[2026-08-12T17:38:33.774Z] Polling error: fetch failed
+[2026-08-12T17:38:41.497Z] Polling error: fetch failed
+[2026-08-12T17:38:53.772Z] Polling error: fetch failed
+[2026-08-12T17:39:01.479Z] Polling error: fetch failed
