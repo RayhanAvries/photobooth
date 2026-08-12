@@ -70,9 +70,6 @@ if (!hasCategoryColumn) {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static('public'));
 
-// Serve photos directly
-app.use('/photos', express.static(path.join(__dirname, 'public', 'photos')));
-
 ['public/frames', 'public/photos', 'public/print', 'public/sounds', 'public/music', 'uploads'].forEach(dir => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
@@ -252,30 +249,20 @@ app.get('/api/photos/dates', (req, res) => {
   res.json(dates);
 });
 
-// DOWNLOAD ENDPOINT - Diperbaiki
 app.get('/download/:filename', (req, res) => {
   const filename = req.params.filename;
-  // Cari file di folder public/photos
   const filePath = path.join(__dirname, 'public', 'photos', filename);
   
-  console.log('Download request:', filename);
-  console.log('Looking at:', filePath);
-  
   if (!fs.existsSync(filePath)) {
-    console.error('File not found:', filePath);
-    return res.status(404).json({ error: 'File not found' });
+    return res.status(404).send('File not found');
   }
 
-  const ext = path.extname(filename).toLowerCase();
-  let contentType = 'image/png';
-  if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
-  
-  res.setHeader('Content-Type', contentType);
-  res.setHeader('Content-Disposition', `attachment; filename="Kidversa_Studio_${filename}"`);
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  
-  const fileStream = fs.createReadStream(filePath);
-  fileStream.pipe(res);
+  res.sendFile(filePath, {
+    headers: {
+      'Content-Type': 'image/png',
+      'Content-Disposition': `attachment; filename="Kidversa_Studio_${filename}"`
+    }
+  });
 });
 
 app.get('/api/settings', (req, res) => {
@@ -293,19 +280,38 @@ app.post('/api/settings', (req, res) => {
 });
 
 app.get('/api/printers', (req, res) => {
-  // Coba lpstat untuk Linux
-  exec('lpstat -p 2>/dev/null | awk \'{print $2}\'', { timeout: 5000 }, (error, stdout) => {
-    if (error || !stdout.trim()) {
-      // Fallback: return default only
-      return res.json([{ name: 'default', description: 'Default printer (save to file)' }]);
-    }
-    const names = stdout.split('\n')
-      .map(line => line.trim())
-      .filter(Boolean);
-    const list = names.map(name => ({ name, description: name }));
-    list.unshift({ name: 'default', description: 'Default printer (save to file)' });
-    res.json(list);
-  });
+  const os = require('os');
+  const platform = os.platform();
+  
+  if (platform === 'win32') {
+    const cmd = 'wmic printer get name';
+    exec(cmd, (error, stdout) => {
+      if (error) {
+        return res.json([{ name: 'default', description: 'Default printer (system)' }]);
+      }
+      const names = stdout.split('\n')
+        .filter(line => line.trim() && !line.includes('Name'))
+        .map(line => line.trim())
+        .filter(Boolean);
+      const list = names.map(name => ({ name, description: name }));
+      list.unshift({ name: 'default', description: 'Default printer (system)' });
+      res.json(list);
+    });
+  } else if (platform === 'linux') {
+    exec('lpstat -p | awk \'{print $2}\'', (error, stdout) => {
+      if (error) {
+        return res.json([{ name: 'default', description: 'Default printer (system)' }]);
+      }
+      const names = stdout.split('\n')
+        .map(line => line.trim())
+        .filter(Boolean);
+      const list = names.map(name => ({ name, description: name }));
+      list.unshift({ name: 'default', description: 'Default printer (system)' });
+      res.json(list);
+    });
+  } else {
+    res.json([{ name: 'default', description: 'Default printer (system)' }]);
+  }
 });
 
 app.post('/api/print-temp', express.json({ limit: '50mb' }), async (req, res) => {
@@ -331,52 +337,53 @@ app.post('/api/print-temp', express.json({ limit: '50mb' }), async (req, res) =>
       .toBuffer();
 
     const filename = `print_${uuidv4()}.png`;
-    const printDir = path.join(__dirname, 'public', 'print');
-    
-    // Pastikan folder ada
-    if (!fs.existsSync(printDir)) {
-      fs.mkdirSync(printDir, { recursive: true });
-    }
-    
-    const printPath = path.join(printDir, filename);
+    const printPath = path.join(__dirname, 'public', 'print', filename);
     fs.writeFileSync(printPath, processedBuffer);
 
-    const printName = printerName && printerName !== 'default' ? printerName : '';
-    
-    // Simpan juga sebagai backup dengan nama yang lebih jelas
-    const savedFilename = `saved_${Date.now()}.png`;
-    const savedPath = path.join(printDir, savedFilename);
-    fs.copyFileSync(printPath, savedPath);
+    const os = require('os');
+    const platform = os.platform();
 
-    // Coba print menggunakan lp (Linux) atau simpan saja
-    let cmd;
-    if (printName) {
-      cmd = `lp -d "${printName}" "${printPath}" 2>&1`;
+    if (platform === 'win32') {
+      const printName = printerName && printerName !== 'default' ? printerName : '';
+      const ps1Path = path.join(__dirname, 'print.ps1');
+
+      if (!fs.existsSync(ps1Path)) {
+        try { fs.unlinkSync(printPath); } catch (e) {}
+        return res.status(500).json({ error: 'print.ps1 not found' });
+      }
+
+      const cmd = `powershell -ExecutionPolicy Bypass -File "${ps1Path}" -imagePath "${printPath}" -printerName "${printName}"`;
+
+      exec(cmd, { timeout: 30000 }, (error, stdout, stderr) => {
+        try { fs.unlinkSync(printPath); } catch (e) {}
+        if (error) {
+          return res.status(500).json({ error: 'Print failed: ' + (stderr || error.message) });
+        }
+        res.json({ success: true, method: 'powershell_temp' });
+      });
+    } else if (platform === 'linux') {
+      const printName = printerName && printerName !== 'default' ? printerName : '';
+      
+      let cmd;
+      if (printName) {
+        cmd = `lp -d "${printName}" -o media=Custom.72x150mm -o fit-to-page "${printPath}"`;
+      } else {
+        cmd = `lp -o media=Custom.72x150mm -o fit-to-page "${printPath}"`;
+      }
+
+      exec(cmd, { timeout: 30000 }, (error, stdout, stderr) => {
+        try { fs.unlinkSync(printPath); } catch (e) {}
+        if (error) {
+          return res.status(500).json({ error: 'Print failed: ' + (stderr || error.message) });
+        }
+        res.json({ success: true, method: 'cups_temp' });
+      });
     } else {
-      cmd = `lp "${printPath}" 2>&1`;
+      try { fs.unlinkSync(printPath); } catch (e) {}
+      res.status(500).json({ error: 'Unsupported platform: ' + platform });
     }
 
-    exec(cmd, { timeout: 15000 }, (error, stdout, stderr) => {
-      // Hapus file temporary (tapi simpan backup)
-      try { fs.unlinkSync(printPath); } catch (e) {}
-      
-      if (error) {
-        console.log('Print command failed (expected on systems without printer):', error.message);
-        // Return success dengan info bahwa file disimpan
-        return res.json({ 
-          success: true, 
-          message: 'Print command not available. File saved instead.',
-          savedFile: savedFilename,
-          method: 'file_saved'
-        });
-      }
-      
-      console.log('Print stdout:', stdout);
-      res.json({ success: true, method: 'cups_print' });
-    });
-
   } catch (err) {
-    console.error('Processing error:', err);
     res.status(500).json({ error: 'Processing failed: ' + err.message });
   }
 });
@@ -384,19 +391,9 @@ app.post('/api/print-temp', express.json({ limit: '50mb' }), async (req, res) =>
 app.delete('/api/print-temp', (req, res) => {
   const dir = path.join(__dirname, 'public', 'print');
   try {
-    if (fs.existsSync(dir)) {
-      const files = fs.readdirSync(dir);
-      // Hanya hapus file print_ (temporary), jangan hapus saved_
-      files.forEach(file => {
-        if (file.startsWith('print_')) {
-          fs.unlinkSync(path.join(dir, file));
-        }
-      });
-      const deletedCount = files.filter(f => f.startsWith('print_')).length;
-      res.json({ success: true, deleted: deletedCount });
-    } else {
-      res.json({ success: true, deleted: 0 });
-    }
+    const files = fs.readdirSync(dir);
+    files.forEach(file => fs.unlinkSync(path.join(dir, file)));
+    res.json({ success: true, deleted: files.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -415,4 +412,4 @@ app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.ht
 app.get('/booth', (req, res) => res.sendFile(path.join(__dirname, 'public', 'booth.html')));
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 
-app.listen(PORT, '0.0.0.0', () => console.log(`Server running at http://0.0.0.0:${PORT}`));
+app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
