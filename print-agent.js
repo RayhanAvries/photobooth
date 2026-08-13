@@ -2,12 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 
-// ============================================================
-// KONFIGURASI - GANTI DENGAN URL SERVER VPS KAMU
-// ============================================================
-const SERVER_URL = process.env.SERVER_URL || 'http://IP_VPS_ANDA:3000';
-const POLL_INTERVAL = 5000; // 5 detik
-// ============================================================
+const SERVER_URL = 'https://studio.kidversa.fun';
+const POLL_INTERVAL = 3000;
 
 const DOWNLOAD_DIR = path.join(__dirname, 'print-downloads');
 if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
@@ -25,7 +21,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function downloadImage(url, dest) {
   const response = await fetch(url);
-  if (!response.ok) throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+  if (!response.ok) throw new Error(`Download failed: ${response.status}`);
   const arrayBuffer = await response.arrayBuffer();
   fs.writeFileSync(dest, Buffer.from(arrayBuffer));
 }
@@ -34,13 +30,11 @@ function runPowerShell(imagePath, printerName) {
   return new Promise((resolve, reject) => {
     const ps1Path = path.join(__dirname, 'print.ps1');
     if (!fs.existsSync(ps1Path)) {
-      return reject(new Error('print.ps1 tidak ditemukan di folder yang sama dengan agent'));
+      return reject(new Error('print.ps1 not found'));
     }
 
     const printerArg = printerName && printerName !== 'default' ? printerName : '';
     const cmd = `powershell -ExecutionPolicy Bypass -File "${ps1Path}" -imagePath "${imagePath}" -printerName "${printerArg}"`;
-
-    log(`Menjalankan PowerShell: ${cmd}`);
 
     exec(cmd, { timeout: 30000 }, (error, stdout, stderr) => {
       if (error) {
@@ -59,9 +53,9 @@ async function updateJobStatus(jobId, status, error = null) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status, error })
     });
-    if (!res.ok) log(`Gagal update status job ${jobId}: HTTP ${res.status}`);
+    if (!res.ok) log(`Failed to update job ${jobId}: HTTP ${res.status}`);
   } catch (err) {
-    log(`Gagal update status job ${jobId}: ${err.message}`);
+    log(`Failed to update job ${jobId}: ${err.message}`);
   }
 }
 
@@ -70,28 +64,22 @@ async function processJob(job) {
   const fileName = path.basename(job.image_path);
   const localPath = path.join(DOWNLOAD_DIR, fileName);
 
-  log(`Memproses job #${job.id}: ${fileName} (printer: ${job.printer_name})`);
+  log(`Processing job #${job.id}: ${fileName}`);
 
   try {
-    log(`Mendownload: ${imageUrl}`);
     await downloadImage(imageUrl, localPath);
-    log(`Download selesai: ${localPath}`);
+    log(`Downloaded: ${fileName}`);
 
-    log(`Mencetak dengan PowerShell...`);
-    const result = await runPowerShell(localPath, job.printer_name);
-    log(`Hasil PowerShell: ${result}`);
+    await runPowerShell(localPath, job.printer_name);
+    log(`Print success: ${fileName}`);
 
-    log(`✅ Print sukses untuk job #${job.id}`);
     await updateJobStatus(job.id, 'printed');
 
     try {
       fs.unlinkSync(localPath);
-      log(`File lokal dihapus: ${localPath}`);
-    } catch (unlinkErr) {
-      log(`Peringatan: gagal hapus file lokal: ${unlinkErr.message}`);
-    }
+    } catch (e) {}
   } catch (err) {
-    log(`❌ Print gagal untuk job #${job.id}: ${err.message}`);
+    log(`Print failed for job #${job.id}: ${err.message}`);
     await updateJobStatus(job.id, 'failed', err.message);
   }
 }
@@ -99,14 +87,9 @@ async function processJob(job) {
 async function poll() {
   try {
     const res = await fetch(`${SERVER_URL}/api/print-jobs?status=pending`);
-    if (!res.ok) {
-      log(`Polling error: HTTP ${res.status}`);
-      return;
-    }
+    if (!res.ok) return;
     const jobs = await res.json();
-    if (jobs.length > 0) {
-      log(`Ditemukan ${jobs.length} job pending`);
-    }
+    if (jobs.length > 0) log(`Found ${jobs.length} pending jobs`);
     for (const job of jobs) {
       await processJob(job);
     }
@@ -115,34 +98,10 @@ async function poll() {
   }
 }
 
-async function checkServer() {
-  try {
-    const res = await fetch(`${SERVER_URL}/api/settings`);
-    if (res.ok) {
-      log(`Terhubung ke server: ${SERVER_URL}`);
-      return true;
-    } else {
-      log(`Server merespons dengan status: ${res.status}`);
-      return false;
-    }
-  } catch (err) {
-    log(`Tidak dapat terhubung ke server: ${err.message}`);
-    return false;
-  }
-}
-
 (async () => {
-  log('============================================');
-  log('Print Agent dimulai');
-  log(`Server URL: ${SERVER_URL}`);
-  log(`Interval polling: ${POLL_INTERVAL} ms`);
-  log('============================================');
-
-  const connected = await checkServer();
-  if (!connected) {
-    log('Periksa kembali URL server dan koneksi internet. Agent tetap berjalan untuk mencoba ulang...');
-  }
-
+  log('Print Agent started');
+  log(`Server: ${SERVER_URL}`);
+  
   while (true) {
     await poll();
     await sleep(POLL_INTERVAL);

@@ -79,12 +79,21 @@ if (!hasCategoryColumn) {
 app.use(express.json({ limit: '20mb' }));
 app.use(express.static('public'));
 
-['public/frames', 'public/photos', 'public/print', 'public/sounds', 'public/music', 'uploads'].forEach(dir => {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+const dirs = ['public/frames', 'public/photos', 'public/print', 'public/sounds', 'public/music', 'uploads'];
+dirs.forEach(dir => {
+  const fullPath = path.join(__dirname, dir);
+  if (!fs.existsSync(fullPath)) {
+    fs.mkdirSync(fullPath, { recursive: true });
+    console.log(`Created directory: ${fullPath}`);
+  }
 });
 
 const storage = multer.diskStorage({
-  destination: 'uploads/',
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+    cb(null, uploadDir);
+  },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
     cb(null, uuidv4() + ext);
@@ -109,7 +118,7 @@ app.post('/api/sounds', upload.single('sound'), (req, res) => {
   const name = req.body.name || 'Untitled';
   const category = req.body.category || 'general';
   const filename = req.file.filename;
-  const destPath = path.join('public/sounds', filename);
+  const destPath = path.join(__dirname, 'public', 'sounds', filename);
   fs.renameSync(req.file.path, destPath);
   const info = db.prepare('INSERT INTO sounds (name, filename, category) VALUES (?, ?, ?)').run(name, filename, category);
   res.status(201).json({ id: info.lastInsertRowid, name, filename, category });
@@ -118,7 +127,7 @@ app.post('/api/sounds', upload.single('sound'), (req, res) => {
 app.delete('/api/sounds/:id', (req, res) => {
   const sound = db.prepare('SELECT * FROM sounds WHERE id = ?').get(req.params.id);
   if (!sound) return res.status(404).json({ error: 'Sound not found' });
-  const filePath = path.join('public/sounds', sound.filename);
+  const filePath = path.join(__dirname, 'public', 'sounds', sound.filename);
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   db.prepare('DELETE FROM sounds WHERE id = ?').run(req.params.id);
   res.json({ success: true });
@@ -135,12 +144,12 @@ app.post('/api/background-music', upload.single('music'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Audio file required' });
   
   const filename = req.file.filename;
-  const destPath = path.join('public/music', filename);
+  const destPath = path.join(__dirname, 'public', 'music', filename);
   fs.renameSync(req.file.path, destPath);
 
   const oldRow = db.prepare("SELECT value FROM settings WHERE key = 'background_music'").get();
   if (oldRow && oldRow.value) {
-    const oldPath = path.join('public/music', oldRow.value);
+    const oldPath = path.join(__dirname, 'public', 'music', oldRow.value);
     if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
   }
 
@@ -151,7 +160,7 @@ app.post('/api/background-music', upload.single('music'), (req, res) => {
 app.delete('/api/background-music', (req, res) => {
   const row = db.prepare("SELECT value FROM settings WHERE key = 'background_music'").get();
   if (row && row.value) {
-    const filePath = path.join('public/music', row.value);
+    const filePath = path.join(__dirname, 'public', 'music', row.value);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     db.prepare("DELETE FROM settings WHERE key = 'background_music'").run();
     res.json({ success: true });
@@ -169,7 +178,7 @@ app.post('/api/frames', upload.single('frame'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Image file required' });
   const name = req.body.name || 'Untitled';
   const filename = req.file.filename;
-  const destPath = path.join('public/frames', filename);
+  const destPath = path.join(__dirname, 'public', 'frames', filename);
   fs.renameSync(req.file.path, destPath);
   const info = db.prepare('INSERT INTO frames (name, filename, active) VALUES (?, ?, 1)').run(name, filename);
   res.status(201).json({ id: info.lastInsertRowid, name, filename, active: 1 });
@@ -187,7 +196,7 @@ app.patch('/api/frames/:id/active', (req, res) => {
 app.delete('/api/frames/:id', (req, res) => {
   const frame = db.prepare('SELECT * FROM frames WHERE id = ?').get(req.params.id);
   if (!frame) return res.status(404).json({ error: 'Frame not found' });
-  const filePath = path.join('public/frames', frame.filename);
+  const filePath = path.join(__dirname, 'public', 'frames', frame.filename);
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   db.prepare('DELETE FROM frames WHERE id = ?').run(req.params.id);
   res.json({ success: true });
@@ -201,7 +210,7 @@ app.post('/api/photos', express.json({ limit: '20mb' }), (req, res) => {
   const ext = matches[1] === 'jpeg' ? 'jpg' : 'png';
   const base64Data = matches[2];
   const filename = uuidv4() + '.' + ext;
-  const filePath = path.join('public/photos', filename);
+  const filePath = path.join(__dirname, 'public', 'photos', filename);
   fs.writeFileSync(filePath, base64Data, 'base64');
   const info = db.prepare('INSERT INTO photos (frame_id, filename) VALUES (?, ?)').run(frame_id || null, filename);
   res.json({ id: info.lastInsertRowid, filename, url: `/photos/${filename}` });
@@ -232,7 +241,7 @@ app.get('/api/photos', (req, res) => {
 app.delete('/api/photos/:id', (req, res) => {
   const photo = db.prepare('SELECT * FROM photos WHERE id = ?').get(req.params.id);
   if (!photo) return res.status(404).json({ error: 'Photo not found' });
-  const filePath = path.join('public/photos', photo.filename);
+  const filePath = path.join(__dirname, 'public', 'photos', photo.filename);
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   db.prepare('DELETE FROM photos WHERE id = ?').run(req.params.id);
   res.json({ success: true });
@@ -241,7 +250,7 @@ app.delete('/api/photos/:id', (req, res) => {
 app.delete('/api/photos/date/:date', (req, res) => {
   const photos = db.prepare('SELECT * FROM photos WHERE DATE(created_at) = ?').all(req.params.date);
   photos.forEach(photo => {
-    const filePath = path.join('public/photos', photo.filename);
+    const filePath = path.join(__dirname, 'public', 'photos', photo.filename);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   });
   db.prepare('DELETE FROM photos WHERE DATE(created_at) = ?').run(req.params.date);
@@ -256,22 +265,6 @@ app.get('/api/photos/dates', (req, res) => {
     ORDER BY date DESC
   `).all();
   res.json(dates);
-});
-
-app.get('/download/:filename', (req, res) => {
-  const filename = req.params.filename;
-  const filePath = path.join(__dirname, 'public', 'photos', filename);
-  
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).send('File not found');
-  }
-
-  res.sendFile(filePath, {
-    headers: {
-      'Content-Type': 'image/png',
-      'Content-Disposition': `attachment; filename="Kidversa_Studio_${filename}"`
-    }
-  });
 });
 
 app.get('/api/settings', (req, res) => {
@@ -326,8 +319,14 @@ app.post('/api/print-temp', express.json({ limit: '20mb' }), async (req, res) =>
       .withMetadata({ density: DPI })
       .toBuffer();
 
+    const printDir = path.join(__dirname, 'public', 'print');
+    if (!fs.existsSync(printDir)) {
+      fs.mkdirSync(printDir, { recursive: true });
+      console.log(`Created print directory: ${printDir}`);
+    }
+
     const filename = `print_${uuidv4()}.png`;
-    const printPath = path.join(__dirname, 'public', 'print', filename);
+    const printPath = path.join(printDir, filename);
     fs.writeFileSync(printPath, processedBuffer);
 
     const printName = printerName && printerName !== 'default' ? printerName : 'default';
@@ -336,6 +335,7 @@ app.post('/api/print-temp', express.json({ limit: '20mb' }), async (req, res) =>
 
     res.json({ success: true, method: 'queued', job_id: info.lastInsertRowid });
   } catch (err) {
+    console.error('Print processing error:', err);
     res.status(500).json({ error: 'Processing failed: ' + err.message });
   }
 });
@@ -365,12 +365,42 @@ app.patch('/api/print-jobs/:id', (req, res) => {
 app.delete('/api/print-temp', (req, res) => {
   const dir = path.join(__dirname, 'public', 'print');
   try {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+      return res.json({ success: true, deleted: 0 });
+    }
     const files = fs.readdirSync(dir);
     files.forEach(file => fs.unlinkSync(path.join(dir, file)));
     res.json({ success: true, deleted: files.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+app.get('/download/:filename', (req, res) => {
+  const filename = req.params.filename;
+  const filePath = path.join(__dirname, 'public', 'photos', filename);
+  
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).send('File not found');
+  }
+
+  const ext = path.extname(filename).toLowerCase();
+  const contentType = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 'image/png';
+
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Content-Disposition', `attachment; filename="Kidversa_Studio_${filename}"`);
+  
+  const fileStream = fs.createReadStream(filePath);
+  fileStream.pipe(res);
+});
+
+app.get('/d/:filename', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'download.html'));
+});
+
+app.get('/p/:filename', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'download.html'));
 });
 
 app.use((err, req, res, next) => {
